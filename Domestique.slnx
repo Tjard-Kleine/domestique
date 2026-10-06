@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Domestique.App/Domestique.App.csproj" />
+    <Project Path="src/Domestique.Ble/Domestique.Ble.csproj" />
+    <Project Path="src/Domestique.Core/Domestique.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Domestique.Tests/Domestique.Tests.csproj" />
+  </Folder>
+</Solution>
