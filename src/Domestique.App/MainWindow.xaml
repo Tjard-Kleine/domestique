@@ -6,7 +6,9 @@
         xmlns:local="clr-namespace:Domestique.App"
         mc:Ignorable="d"
         Title="MainWindow" Height="450" Width="800">
-    <Grid>
-
-    </Grid>
+    <StackPanel Margin="16">
+        <Button Content="Verbinden" Click="Connect_Click" Width="120" HorizontalAlignment="Left"/>
+        <TextBlock x:Name="StatusText" Margin="0,12,0,0"/>
+        <TextBlock x:Name="ValuesText" Margin="0,8,0,0" FontSize="20"/>
+    </StackPanel>
 </Window>
