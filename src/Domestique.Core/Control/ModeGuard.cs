@@ -21,12 +21,13 @@ public sealed class ModeGuard(Action<byte[]> sendTarget)
         sendTarget(FtmsCommands.SetTargetPower(watts));
     }
 
-    public void EndErg()
+    // Zurück in die Simulation, mit der Steigung, die gerade am Trainer anliegen soll (ohne Strecke flach).
+    public void EndErg(double gradePercent = 0)
     {
         if (Mode != ControlMode.Erg) return;
         Mode = ControlMode.Free;
         TargetPowerW = null;
-        SetGrade(0);                                      // zurück auf flache Straße
+        SetGrade(gradePercent);
     }
 
     public void SetGrade(double gradePercent)

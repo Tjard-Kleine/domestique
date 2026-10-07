@@ -20,7 +20,7 @@ public sealed class BleTrainer(SessionState state) : IAsyncDisposable
     private GattCharacteristic? _status;
     public ControlPoint? Control { get; private set; }               // null: Trainer nur lesbar
     public (int Min, int Max)? PowerRange { get; private set; }
-    // ▸ Phase 8: weitere Felder hier
+    private bool _wasDisconnected;
 
     public async Task ConnectAsync(ulong address)
     {
@@ -46,6 +46,7 @@ public sealed class BleTrainer(SessionState state) : IAsyncDisposable
 
         await ConnectControlAsync();
         state.Update(s => s with { Connected = true });
+        RawLog.Note($"Trainer verbunden ({_device.Name}), ERG-Bereich {PowerRange?.ToString() ?? "unbekannt"}");
     }
 
     // Steuerung ist optional: ohne Control Point bleibt der Trainer lesbar.
@@ -135,10 +136,43 @@ public sealed class BleTrainer(SessionState state) : IAsyncDisposable
     {
         bool connected = sender.ConnectionStatus == BluetoothConnectionStatus.Connected;
         state.Update(s => s with { Connected = connected });
-        // ▸ Phase 8: Wiederverbinden hier
+        if (!connected)
+        {
+            _wasDisconnected = true;
+            Control?.OnDisconnected();
+            RawLog.Note("Trainer getrennt");
+        }
+        else if (_wasDisconnected)
+        {
+            _wasDisconnected = false;
+            _ = ResubscribeAsync();
+        }
     }
 
-    // ▸ Phase 8: weitere Methoden hier
+    // Review #4: Windows verbindet selbst neu (MaintainConnection), aber Abos und Kontrolle sind weg.
+    private async Task ResubscribeAsync()
+    {
+        RawLog.Note("Trainer wieder da, abonniere neu");
+        for (int attempt = 1; attempt <= 3; attempt++)
+        {
+            try
+            {
+                if (await SubscribeAsync(_bikeData, GattClientCharacteristicConfigurationDescriptorValue.Notify)
+                    && await SubscribeAsync(_status, GattClientCharacteristicConfigurationDescriptorValue.Notify)
+                    && await SubscribeAsync(_controlPoint, GattClientCharacteristicConfigurationDescriptorValue.Indicate))
+                {
+                    if (Control is not null) await Control.TakeControlAsync();     // Kontrolle, Start, letzter Zielwert
+                    return;
+                }
+            }
+            catch (Exception ex) { RawLog.Note($"Neu-Abo Versuch {attempt}: {ex.Message}"); }
+            await Task.Delay(TimeSpan.FromSeconds(2));
+        }
+        RawLog.Note("Neu-Abo nach Reconnect fehlgeschlagen");
+    }
+
+    private static async Task<bool> SubscribeAsync(GattCharacteristic? c, GattClientCharacteristicConfigurationDescriptorValue value) =>
+        c is null || await c.WriteClientCharacteristicConfigurationDescriptorAsync(value) == GattCommunicationStatus.Success;
 
     public async ValueTask DisposeAsync()
     {
