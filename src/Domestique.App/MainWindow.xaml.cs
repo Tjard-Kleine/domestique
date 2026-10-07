@@ -9,14 +9,16 @@ using System.Windows.Threading;
 using Domestique.Ble;
 using Domestique.Core;
 using Domestique.Core.Protocol;
-// ▸ Phase 3–7: weitere usings hier
+using Domestique.Core.Control;
+// ▸ Phase 4–7: weitere usings hier
 
 namespace Domestique.App;
 
 public partial class MainWindow : Window
 {
     private const int HotkeyClickThrough = 1;                 // Strg+Alt+D
-    // ▸ Phase 3–4: weitere Hotkey-Nummern hier
+    private const int HotkeyPowerUp = 2, HotkeyPowerDown = 3; // Strg+Alt+Bild↑ / Bild↓
+    // ▸ Phase 4: weitere Hotkey-Nummern hier
 
     private readonly SessionState _state = new();
     private readonly AppSettings _settings = AppSettings.Load();
@@ -24,7 +26,8 @@ public partial class MainWindow : Window
     private BleTrainer? _trainer;
     private bool _clickThrough;
     private string _message = "Suche Trainer …";
-    // ▸ Phase 3–8: weitere Felder hier
+    private readonly ModeGuard _guard;
+    // ▸ Phase 4–8: weitere Felder hier
 
     public MainWindow()
     {
@@ -34,7 +37,8 @@ public partial class MainWindow : Window
         {
             if (e.HeightChanged && e.PreviousSize.Height > 0) Top -= e.NewSize.Height - e.PreviousSize.Height;
         };
-        // ▸ Phase 3–7: weitere Initialisierung hier
+        _guard = new ModeGuard(command => _trainer?.Control?.SetTarget(command));
+        // ▸ Phase 4–7: weitere Initialisierung hier
     }
 
     protected override void OnSourceInitialized(EventArgs e)
@@ -42,8 +46,16 @@ public partial class MainWindow : Window
         base.OnSourceInitialized(e);
         var hwnd = Native.Handle(this);
         HwndSource.FromHwnd(hwnd).AddHook(WndProc);
-        Native.RegisterHotKey(hwnd, HotkeyClickThrough, Native.MOD_CONTROL | Native.MOD_ALT, 0x44);
-        // ▸ Phase 3–4: weitere Hotkeys registrieren
+        RegisterHotkey(hwnd, HotkeyClickThrough, 0x44);       // D
+        RegisterHotkey(hwnd, HotkeyPowerUp, 0x21);            // Bild↑ (nicht Pfeiltasten: drehen bei manchen Treibern den Bildschirm)
+        RegisterHotkey(hwnd, HotkeyPowerDown, 0x22);          // Bild↓
+        // ▸ Phase 4: weitere Hotkeys registrieren
+    }
+
+    private static void RegisterHotkey(IntPtr hwnd, int id, uint key)
+    {
+        if (!Native.RegisterHotKey(hwnd, id, Native.MOD_CONTROL | Native.MOD_ALT, key))
+            RawLog.Note($"Tastenkürzel Strg+Alt+0x{key:X2} ist von einem anderen Programm belegt");
     }
 
     private async void Window_Loaded(object sender, RoutedEventArgs e)
@@ -69,10 +81,12 @@ public partial class MainWindow : Window
             await _trainer.ConnectAsync(address.Value);
             _settings.TrainerAddress = address;
             _settings.Save();
-            // ▸ Phase 3: nach dem Verbinden
+            if (_trainer.PowerRange is { } range) _guard.PowerLimits = range;
+            _guard.Reapply();                                 // Startzustand flache Straße oder das schon gewählte Ziel
         }
         catch (Exception ex)
         {
+            if (_trainer is not null) { await _trainer.DisposeAsync(); _trainer = null; }   // halbe Verbindung freigeben
             _message = "Fehler: " + ex.Message;
             _settings.TrainerAddress = null;                  // beim nächsten Start neu suchen
             _settings.Save();
@@ -92,8 +106,13 @@ public partial class MainWindow : Window
         bool stale = Stopwatch.GetElapsedTime(s.LastPacketTimestamp) > TimeSpan.FromSeconds(3);
         PowerText.Text = stale ? "– W" : $"{s.Power3sW} W";
         DetailText.Text = $"{s.CadenceRpm:0} U/min" + (s.HeartRateBpm is int hr ? $"   {hr} bpm" : "");
-        StatusText.Text = !s.Connected ? _message : stale ? "keine Daten" : "";
-        // ▸ Phase 3–5: weitere Anzeigen hier
+        if (_guard.TargetPowerW is int target) DetailText.Text += $"   Ziel {target} W";
+        StatusText.Text = !s.Connected ? _message
+            : stale ? "keine Daten"
+            : _trainer?.Control is null ? "Trainer nicht steuerbar"
+            : !_trainer.Control.HasControl ? "keine Steuerung (andere App aktiv?)"
+            : "";
+        // ▸ Phase 4–5: weitere Anzeigen hier
     }
 
     private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
@@ -110,7 +129,9 @@ public partial class MainWindow : Window
                 _clickThrough = !_clickThrough;
                 Native.SetClickThrough(this, _clickThrough);
                 break;
-            // ▸ Phase 3–4: weitere Hotkeys hier
+            case HotkeyPowerUp:   _guard.SetErg((_guard.TargetPowerW ?? 150) + 10); break;
+            case HotkeyPowerDown: _guard.SetErg((_guard.TargetPowerW ?? 150) - 10); break;
+            // ▸ Phase 4: weitere Hotkeys hier
         }
     }
 

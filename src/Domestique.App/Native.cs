@@ -27,7 +27,6 @@ internal static class Native
 
     public static IntPtr Handle(Window w) => new WindowInteropHelper(w).Handle;
 
-    // An = Mausklicks gehen durch das Overlay hindurch an YouTube.
     public static void SetClickThrough(Window w, bool on)
     {
         IntPtr h = Handle(w);
@@ -35,13 +34,9 @@ internal static class Native
         SetWindowLong(h, GWL_EXSTYLE, on ? style | WS_EX_TRANSPARENT : style & ~WS_EX_TRANSPARENT);
     }
 
-    // Holt das Fenster wieder nach ganz oben, falls sich ein anderes Topmost-Fenster davorgeschoben hat.
     public static void ReassertTopmost(Window w) =>
         SetWindowPos(Handle(w), HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
 
-    // Statt Timer: nur reagieren, wenn ein anderes Fenster in den Vordergrund kommt (wie PowerToys "Always On Top").
-    // Normale Fenster, auch ein Vollbild-Browser, liegen ohnehin unter Topmost-Fenstern; davor kommt nur ein
-    // anderes Topmost-Fenster, und das nur beim Aktivieren. Der Hook endet automatisch mit dem UI-Thread.
     public static void KeepTopmost(Window w)
     {
         _onForeground = (_, _, _, _, _, _, _) => ReassertTopmost(w);
