@@ -105,11 +105,13 @@ public class IndoorBikeDataTest
     }
 
     [Theory]
-    [InlineData(2)]
+    [InlineData(0)]
     [InlineData(1)]
-    public void All_fields_are_skipped_at_correct_offsets(int resistanceBytes)
+    [InlineData(3)]
+    public void All_fields_are_skipped_at_correct_offsets(int trailingBytes)
     {
-        var data = IndoorBikeDataParser.Parse(AllFieldsPacket(resistanceBytes));
+        byte[] packet = [.. AllFieldsPacket(resistanceBytes: 2), .. new byte[trailingBytes]];
+        var data = IndoorBikeDataParser.Parse(packet);
         Assert.NotNull(data);
         Assert.Equal(29.64, data.SpeedKmh);
         Assert.Equal(90.0, data.CadenceRpm);
@@ -117,20 +119,33 @@ public class IndoorBikeDataTest
         Assert.Equal(140, data.HeartRateBpm);
     }
 
+    // Resistance Level ist wie bei Zwift & Co. immer sint16; kürzer heißt: Paket zu kurz
     [Theory]
     [InlineData(0)]
-    [InlineData(3)]
-    public void All_fields_with_invalid_resistance_length_returns_null(int resistanceBytes)
+    [InlineData(1)]
+    public void All_fields_with_short_resistance_returns_null(int resistanceBytes)
     {
         Assert.Null(IndoorBikeDataParser.Parse(AllFieldsPacket(resistanceBytes)));
     }
 
-    [Theory]
-    [InlineData(new byte[] { 0x44, 0x00, 0x94, 0x0B, 0xB4, 0x00, 0xC8 })]
-    [InlineData(new byte[] { 0x44, 0x00, 0x94, 0x0B, 0xB4, 0x00, 0xC8, 0x00, 0x00 })]
-    public void Length_mismatch_returns_null(byte[] packet)
+    [Fact]
+    public void Truncated_packet_returns_null()
     {
+        byte[] packet = [0x44, 0x00, 0x94, 0x0B, 0xB4, 0x00, 0xC8];
         Assert.Null(IndoorBikeDataParser.Parse(packet));
+    }
+
+    [Theory]
+    [InlineData(new byte[] { 0x00 })]
+    [InlineData(new byte[] { 0xAB, 0xCD, 0xEF })]
+    public void Trailing_vendor_bytes_are_ignored(byte[] trailing)
+    {
+        byte[] packet = [0x44, 0x00, 0x94, 0x0B, 0xB4, 0x00, 0xC8, 0x00, .. trailing];
+        var data = IndoorBikeDataParser.Parse(packet);
+        Assert.NotNull(data);
+        Assert.Equal(29.64, data.SpeedKmh);
+        Assert.Equal(90.0, data.CadenceRpm);
+        Assert.Equal(200, data.PowerW);
     }
 
     [Fact]

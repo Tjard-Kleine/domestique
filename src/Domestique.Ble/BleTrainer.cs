@@ -84,6 +84,7 @@ public sealed class BleTrainer(SessionState state) : IAsyncDisposable
         _ftms?.Dispose();
         _session?.Dispose();
         _device?.Dispose();
+        state.Update(s => s with { Connected = false });            // Statusereignis ist schon abgemeldet
         return ValueTask.CompletedTask;
     }
 }
