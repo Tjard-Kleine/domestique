@@ -1,5 +1,8 @@
+using System.Buffers.Binary;
 using System.Diagnostics;
+using System.Runtime.InteropServices.WindowsRuntime;
 using Domestique.Core;
+using Domestique.Core.Control;
 using Domestique.Core.Protocol;
 using Windows.Devices.Bluetooth;
 using Windows.Devices.Bluetooth.GenericAttributeProfile;
@@ -13,7 +16,11 @@ public sealed class BleTrainer(SessionState state) : IAsyncDisposable
     private GattSession? _session;
     private GattDeviceService? _ftms;
     private GattCharacteristic? _bikeData;
-    // ▸ Phase 3 und 8: weitere Felder hier
+    private GattCharacteristic? _controlPoint;
+    private GattCharacteristic? _status;
+    public ControlPoint? Control { get; private set; }               // null: Trainer nur lesbar
+    public (int Min, int Max)? PowerRange { get; private set; }
+    // ▸ Phase 8: weitere Felder hier
 
     public async Task ConnectAsync(ulong address)
     {
@@ -37,14 +44,57 @@ public sealed class BleTrainer(SessionState state) : IAsyncDisposable
         if (result != GattCommunicationStatus.Success)
             throw new InvalidOperationException($"Abo fehlgeschlagen ({result}).");
 
+        await ConnectControlAsync();
         state.Update(s => s with { Connected = true });
-        // ▸ Phase 3: Steuerung hier
+    }
+
+    // Steuerung ist optional: ohne Control Point bleibt der Trainer lesbar.
+    private async Task ConnectControlAsync()
+    {
+        PowerRange = await ReadPowerRangeAsync();
+
+        _status = await GetCharacteristicAsync(BleUuids.MachineStatus);
+        if (_status is not null)
+        {
+            _status.ValueChanged += OnStatus;
+            await _status.WriteClientCharacteristicConfigurationDescriptorAsync(
+                GattClientCharacteristicConfigurationDescriptorValue.Notify);
+        }
+
+        _controlPoint = await GetCharacteristicAsync(BleUuids.ControlPoint);
+        if (_controlPoint is null) { RawLog.Note("Kein Control Point, Trainer nur lesbar"); return; }
+        _controlPoint.ValueChanged += OnControlPoint;
+        var s = await _controlPoint.WriteClientCharacteristicConfigurationDescriptorAsync(
+            GattClientCharacteristicConfigurationDescriptorValue.Indicate);    // 1. erst abonnieren
+        if (s != GattCommunicationStatus.Success) { RawLog.Note($"Control Point nicht abonnierbar ({s})"); return; }
+        Control = new ControlPoint(WriteControlAsync);
+        await Control.TakeControlAsync();                                     // 2. dann Kontrolle holen und starten
     }
 
     private async Task<GattCharacteristic?> GetCharacteristicAsync(Guid uuid)
     {
         var r = await _ftms!.GetCharacteristicsForUuidAsync(uuid, BluetoothCacheMode.Uncached);
         return r.Status == GattCommunicationStatus.Success && r.Characteristics.Count > 0 ? r.Characteristics[0] : null;
+    }
+
+    // Supported Power Range (0x2AD8): Minimum und Maximum für ERG, je sint16
+    private async Task<(int Min, int Max)?> ReadPowerRangeAsync()
+    {
+        if (await GetCharacteristicAsync(BleUuids.SupportedPowerRange) is not { } c) return null;
+        var r = await c.ReadValueAsync(BluetoothCacheMode.Uncached);
+        if (r.Status != GattCommunicationStatus.Success) return null;
+        var b = r.Value.ToBytes();
+        RawLog.Write("2AD8", b);
+        if (b.Length < 4) return null;
+        int min = BinaryPrimitives.ReadInt16LittleEndian(b), max = BinaryPrimitives.ReadInt16LittleEndian(b.AsSpan(2));
+        return max > min ? (Math.Max(0, min), max) : null;
+    }
+
+    private async Task<bool> WriteControlAsync(byte[] command, CancellationToken ct)
+    {
+        RawLog.Write("2AD9>", command);
+        var r = await _controlPoint!.WriteValueWithResultAsync(command.AsBuffer(), GattWriteOption.WriteWithResponse).AsTask(ct);
+        return r.Status == GattCommunicationStatus.Success;
     }
 
     private void OnBikeData(GattCharacteristic sender, GattValueChangedEventArgs args)
@@ -67,6 +117,20 @@ public sealed class BleTrainer(SessionState state) : IAsyncDisposable
         });
     }
 
+    private void OnControlPoint(GattCharacteristic sender, GattValueChangedEventArgs args)
+    {
+        var bytes = args.CharacteristicValue.ToBytes();
+        RawLog.Write("2AD9", bytes);                                // 800501 = Set Target Power erfolgreich
+        Control?.OnIndication(bytes);
+    }
+
+    private void OnStatus(GattCharacteristic sender, GattValueChangedEventArgs args)
+    {
+        var bytes = args.CharacteristicValue.ToBytes();
+        RawLog.Write("2ADA", bytes);
+        if (Control is not null) _ = Control.OnMachineStatus(bytes);  // FF = Kontrolle verloren
+    }
+
     private void OnConnectionStatusChanged(BluetoothLEDevice sender, object args)
     {
         bool connected = sender.ConnectionStatus == BluetoothConnectionStatus.Connected;
@@ -74,17 +138,18 @@ public sealed class BleTrainer(SessionState state) : IAsyncDisposable
         // ▸ Phase 8: Wiederverbinden hier
     }
 
-    // ▸ Phase 3 und 8: weitere Methoden hier
+    // ▸ Phase 8: weitere Methoden hier
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
+        if (Control is not null) await Control.DisposeAsync();
         if (_bikeData is not null) _bikeData.ValueChanged -= OnBikeData;
+        if (_controlPoint is not null) _controlPoint.ValueChanged -= OnControlPoint;
+        if (_status is not null) _status.ValueChanged -= OnStatus;
         if (_device is not null) _device.ConnectionStatusChanged -= OnConnectionStatusChanged;
-        // ▸ Phase 3: Status-Abo lösen
         _ftms?.Dispose();
         _session?.Dispose();
         _device?.Dispose();
         state.Update(s => s with { Connected = false });            // Statusereignis ist schon abgemeldet
-        return ValueTask.CompletedTask;
     }
 }
