@@ -17,6 +17,15 @@ public class IndoorBikeDataTest
         Assert.Null(data.HeartRateBpm);
     }
 
+    [Fact]
+    public void Ignores_appended_vendor_bytes()                  // echtes Paket vom Van Rysel D100
+    {
+        var d = IndoorBikeDataParser.Parse(Convert.FromHexString("40008C020900E101000000001C00E803"));
+        Assert.NotNull(d);
+        Assert.Equal(6.52, d.SpeedKmh!.Value, 2);
+        Assert.Equal(9, d.PowerW);
+    }
+
     [Theory]
     [InlineData(new byte[0])]
     [InlineData(new byte[] { 0x44 })]
