@@ -90,10 +90,11 @@ public sealed class ControlPoint : IAsyncDisposable
         catch (Exception ex) { _log("Control Point: " + ex.Message); return false; }
     }
 
-    // Fitness Machine Status: 0xFF = Kontrolle verloren, 0x01 = Reset. Höchstens alle 5 s zurückholen.
+    // Fitness Machine Status: nur 0xFF heißt Kontrolle verloren. 0x01 (Reset) schickt z. B. der D100 als Antwort
+    // auf Request Control, das ist kein Verlust. Höchstens alle 5 s zurückholen.
     public Task OnMachineStatus(byte[] status)
     {
-        if (status.Length == 0 || status[0] is not (0xFF or 0x01)) return Task.CompletedTask;
+        if (status.Length == 0 || status[0] != 0xFF) return Task.CompletedTask;
         HasControl = false;
         long now = Stopwatch.GetTimestamp();
         if (_lastRegain != 0 && Stopwatch.GetElapsedTime(_lastRegain, now) < RegainCooldown) return Task.CompletedTask;
@@ -101,6 +102,9 @@ public sealed class ControlPoint : IAsyncDisposable
         _log("Control Point: Kontrolle verloren, hole sie zurück");
         return TakeControlAsync();
     }
+
+    // Verbindung weg: Kontrolle gilt als verloren, nach dem Reconnect holt TakeControlAsync sie zurück.
+    public void OnDisconnected() => HasControl = false;
 
     private async Task<bool> RequestControlAsync() =>
         HasControl = (await SendAsync(FtmsCommands.RequestControl()))?.Success == true;

@@ -32,6 +32,18 @@ public class ControlTests
     }
 
     [Fact]
+    public void End_erg_returns_to_the_given_grade()
+    {
+        var sent = new List<byte[]>();
+        var guard = new ModeGuard(sent.Add);
+        guard.SetErg(200);
+        guard.EndErg(3.52);                               // z. B. aktuelle Steigung der Strecke
+        Assert.Equal(ControlMode.Sim, guard.Mode);
+        Assert.Null(guard.TargetPowerW);
+        Assert.Equal(FtmsCommands.SetSimulation(3.52), sent[^1]);
+    }
+
+    [Fact]
     public void Reapply_resends_erg_target()
     {
         var sent = new List<byte[]>();
@@ -98,6 +110,18 @@ public class ControlTests
         await cp.OnMachineStatus([0xFF]);                 // gleich danach: nicht erneut (kein Ping-Pong)
         await Task.Delay(50);
         Assert.Equal(new byte[] { 0x05, 0x00, 0x07, 0x05 }, written.Select(c => c[0]));
+        await cp.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task Other_status_messages_are_ignored()
+    {
+        var (cp, written) = FakeTrainer();
+        await cp.OnMachineStatus([0x01]);                 // Reset, schickt der D100 nach Request Control
+        await cp.OnMachineStatus([0x04]);                 // gestartet
+        await cp.OnMachineStatus([0x12, 0x00, 0x00, 0x00, 0x00, 0x28, 0x33]);   // Simulation geändert
+        await Task.Delay(50);
+        Assert.Empty(written);
         await cp.DisposeAsync();
     }
 
