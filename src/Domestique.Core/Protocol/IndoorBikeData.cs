@@ -12,7 +12,8 @@ public static class IndoorBikeDataParser
         ushort f = BinaryPrimitives.ReadUInt16LittleEndian(d);
         if (Length(f, resistanceBytes: 2) == d.Length) return Read(d, f, 2);
         if ((f & 0x0020) != 0 && Length(f, resistanceBytes: 1) == d.Length) return Read(d, f, 1);
-        return null;                                   // passt zu keiner Variante: nicht raten
+        if (d.Length > Length(f, resistanceBytes: 2)) return Read(d, f, 2);   // angehängte Herstellerbytes ignorieren (Van Rysel D100)
+        return null;                                   // zu kurz: nicht raten
     }
 
     private static int Length(ushort f, int resistanceBytes)
