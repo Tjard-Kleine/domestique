@@ -1,0 +1,60 @@
+<!-- Der Begleiter „Domestique“. Zeigt Zustand und Anstrengung über den Gesichtsausdruck. Nur statische Formen. -->
+<UserControl x:Class="Domestique.App.Avatar"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Width="64" Height="52" IsHitTestVisible="False">
+    <Viewbox>
+        <Canvas Width="64" Height="52">
+            <!-- Körper: weiches Marshmallow wie im Vorbild -->
+            <Rectangle Canvas.Left="2" Canvas.Top="3" Width="60" Height="47" RadiusX="22" RadiusY="20"
+                       Fill="{DynamicResource AvatarBodyBrush}" Stroke="#14000000" StrokeThickness="1"/>
+            <Rectangle Canvas.Left="10" Canvas.Top="6" Width="26" Height="6" RadiusX="3" RadiusY="3" Fill="#88FFFFFF"/>
+
+            <!-- Wangen -->
+            <Ellipse x:Name="Cheeks1" Canvas.Left="11" Canvas.Top="30" Width="10" Height="5" Fill="{DynamicResource AvatarCheekBrush}"/>
+            <Ellipse x:Name="Cheeks2" Canvas.Left="43" Canvas.Top="30" Width="10" Height="5" Fill="{DynamicResource AvatarCheekBrush}"/>
+
+            <!-- offene Augen: Blinzeln skaliert sie kurz zusammen, Suchen verschiebt sie zur Seite -->
+            <Canvas x:Name="EyesOpen">
+                <Canvas.RenderTransform>
+                    <TransformGroup>
+                        <ScaleTransform x:Name="EyeScale" CenterY="24"/>
+                        <TranslateTransform x:Name="EyeShift"/>
+                    </TransformGroup>
+                </Canvas.RenderTransform>
+                <Ellipse Canvas.Left="21" Canvas.Top="18" Width="7.5" Height="12" Fill="{DynamicResource AvatarEyeBrush}"/>
+                <Ellipse Canvas.Left="35.5" Canvas.Top="18" Width="7.5" Height="12" Fill="{DynamicResource AvatarEyeBrush}"/>
+                <Ellipse Canvas.Left="22.5" Canvas.Top="19.5" Width="2.5" Height="3" Fill="#CCFFFFFF"/>
+                <Ellipse Canvas.Left="37" Canvas.Top="19.5" Width="2.5" Height="3" Fill="#CCFFFFFF"/>
+            </Canvas>
+
+            <!-- konzentriert: gerade Brauen, entschlossen statt böse -->
+            <Path x:Name="Brows" Data="M21,14.8 L28.5,14.8 M35.5,14.8 L43,14.8" Stroke="{DynamicResource AvatarEyeBrush}"
+                  StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+
+            <!-- schlafend -->
+            <Path x:Name="EyesClosed" Data="M20.5,24 Q25,28 29.5,24 M34.5,24 Q39,28 43.5,24" Stroke="{DynamicResource AvatarEyeBrush}"
+                  StrokeThickness="2.2" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+            <TextBlock x:Name="Zzz" Canvas.Left="48" Canvas.Top="-2" Text="z" FontSize="11" FontWeight="Bold"
+                       Foreground="{DynamicResource SubtleBrush}"/>
+
+            <!-- glücklich -->
+            <Path x:Name="EyesHappy" Data="M20.5,26 Q25,19 29.5,26 M34.5,26 Q39,19 43.5,26" Stroke="{DynamicResource AvatarEyeBrush}"
+                  StrokeThickness="2.4" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+
+            <!-- benommen: Spiral-Augen wie im Vorbild, aus Halbkreisen mit wachsendem Radius -->
+            <Path x:Name="EyesDizzy" Stroke="{DynamicResource AvatarEyeBrush}" StrokeThickness="1.6" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                  Data="M25,24 a1,1 0 0 1 2,0 a2,2 0 0 1 -4,0 a3,3 0 0 1 6,0 a4,4 0 0 1 -8,0
+                        M39,24 a1,1 0 0 0 -2,0 a2,2 0 0 0 4,0 a3,3 0 0 0 -6,0 a4,4 0 0 0 8,0"/>
+
+            <!-- am Limit: zusammengekniffen, Schweißtropfen -->
+            <Path x:Name="EyesStrain" Data="M21,20 L28.5,24 L21,28 M43,20 L35.5,24 L43,28" Stroke="{DynamicResource AvatarEyeBrush}"
+                  StrokeThickness="2.2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"/>
+            <Path x:Name="Sweat" Data="M52,9 Q49,14 52,16 Q55,14 52,9 Z" Fill="#7FB8E8FF"/>
+
+            <!-- Aufnahme läuft -->
+            <Ellipse x:Name="RecDot" Canvas.Left="0" Canvas.Top="0" Width="11" Height="11" Fill="{DynamicResource NegativeBrush}"
+                     Stroke="{DynamicResource SurfaceSolidBrush}" StrokeThickness="2"/>
+        </Canvas>
+    </Viewbox>
+</UserControl>

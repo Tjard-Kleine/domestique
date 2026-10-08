@@ -19,6 +19,7 @@ public sealed class BleTrainer(SessionState state) : IAsyncDisposable
     private GattCharacteristic? _controlPoint;
     private GattCharacteristic? _status;
     public ControlPoint? Control { get; private set; }               // null: Trainer nur lesbar
+    public string Name => string.IsNullOrWhiteSpace(_device?.Name) ? "Trainer" : _device.Name;
     public (int Min, int Max)? PowerRange { get; private set; }
     private bool _wasDisconnected;
 

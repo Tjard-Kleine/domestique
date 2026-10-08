@@ -29,6 +29,14 @@ internal static class RouteGeometry
         return Frozen(r, project);
     }
 
+    // Fläche unter dem Höhenprofil: die Linie plus die beiden unteren Ecken
+    public static PointCollection Area(PointCollection profile, double h)
+    {
+        var area = new PointCollection(profile) { new Point(profile[^1].X, h), new Point(profile[0].X, h) };
+        area.Freeze();
+        return area;
+    }
+
     private static PointCollection Frozen(Route r, Func<RoutePoint, Point> project)
     {
         var points = new PointCollection(r.Points.Where((_, i) => i % 10 == 0 || i == r.Points.Count - 1).Select(project));
