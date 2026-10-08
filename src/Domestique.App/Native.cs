@@ -24,8 +24,24 @@ internal static class Native
     [DllImport("user32.dll")] public static extern bool UnregisterHotKey(IntPtr hWnd, int id);
     [DllImport("kernel32.dll")] public static extern uint SetThreadExecutionState(uint flags);
     [DllImport("user32.dll")] private static extern IntPtr SetWinEventHook(uint min, uint max, IntPtr module, WinEventProc proc, uint pid, uint tid, uint flags);
+    [DllImport("user32.dll")] private static extern IntPtr MonitorFromWindow(IntPtr hWnd, uint flags);
+    [DllImport("user32.dll")] private static extern bool GetMonitorInfo(IntPtr monitor, ref MonitorInfo info);
+
+    [StructLayout(LayoutKind.Sequential)] private struct NativeRect { public int Left, Top, Right, Bottom; }
+    [StructLayout(LayoutKind.Sequential)] private struct MonitorInfo { public int Size; public NativeRect Monitor, Work; public uint Flags; }
 
     public static IntPtr Handle(Window w) => new WindowInteropHelper(w).Handle;
+
+    // Ganzer Bildschirm, auf dem das Fenster liegt, in WPF-Einheiten
+    public static Rect MonitorBounds(Window w)
+    {
+        var info = new MonitorInfo { Size = Marshal.SizeOf<MonitorInfo>() };
+        if (!GetMonitorInfo(MonitorFromWindow(Handle(w), 2), ref info))           // 2 = nächstgelegener Monitor
+            return new Rect(0, 0, SystemParameters.PrimaryScreenWidth, SystemParameters.PrimaryScreenHeight);
+        var toDip = PresentationSource.FromVisual(w)?.CompositionTarget?.TransformFromDevice ?? System.Windows.Media.Matrix.Identity;
+        return new Rect(toDip.Transform(new Point(info.Monitor.Left, info.Monitor.Top)),
+                        toDip.Transform(new Point(info.Monitor.Right, info.Monitor.Bottom)));
+    }
 
     public static void SetClickThrough(Window w, bool on)
     {

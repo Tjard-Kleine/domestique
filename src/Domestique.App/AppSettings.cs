@@ -10,19 +10,19 @@ public sealed class AppSettings
 
     public double? Left { get; set; }
     public double? Top { get; set; }
+    public bool Docked { get; set; }                // hängt gerade oben wie eine Notch
     public ulong? TrainerAddress { get; set; }
     public ulong? StrapAddress { get; set; }
-    public int FtpW { get; set; } = 250;            // für Workouts (Phase 4, derzeit nicht umgesetzt)
+    public int FtpW { get; set; } = 250;            // für Leistungszonen und den Avatar
     public double RiderKg { get; set; } = 75;
     public double BikeKg { get; set; } = 8;
     public double CdA { get; set; } = 0.32;
     public double Difficulty { get; set; } = 0.5;   // 0.5 = halbe Steigung am Trainer, wie Zwifts Standard
-    public string BackgroundColor { get; set; } = "#000000";
-    public string TextColor { get; set; } = "#FFFFFF";
-    public string AccentColor { get; set; } = "#FF5A36";
-    public double BackgroundOpacity { get; set; } = 0.6;
+    public string Theme { get; set; } = "Standard"; // Standard, Tour oder Vintage
+    public double BackgroundOpacity { get; set; } = 0.88;
     public double Scale { get; set; } = 1.0;
     public bool ShowMap { get; set; } = true;
+    public bool NotchDock { get; set; } = true;     // am oberen Rand andocken erlaubt
 
     private static readonly string FilePath = Path.Combine(Folder, "settings.json");
 
