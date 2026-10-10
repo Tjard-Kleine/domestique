@@ -13,6 +13,7 @@ public sealed class BleHeartRate(SessionState state) : IAsyncDisposable
     private GattDeviceService? _service;
     private GattCharacteristic? _measurement;
     private bool _wasDisconnected;
+    public string Name => string.IsNullOrWhiteSpace(_device?.Name) ? "Pulsgurt" : _device.Name;
 
     public async Task ConnectAsync(ulong address)
     {

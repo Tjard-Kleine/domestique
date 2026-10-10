@@ -44,6 +44,7 @@
     <FontFamily x:Key="LabelFont">Bahnschrift</FontFamily>
     <FontFamily x:Key="NumberFont">Bahnschrift</FontFamily>
     <FontWeight x:Key="NumberWeight">Bold</FontWeight>
+    <sys:Double x:Key="HeroNumberSize">52</sys:Double>   <!-- große Wattzahl auf der Übersicht -->
     <sys:Double x:Key="MinOpacity">0.2</sys:Double>
     <CornerRadius x:Key="ShellRadius">14</CornerRadius>
     <CornerRadius x:Key="CardRadius">8</CornerRadius>

@@ -3,6 +3,9 @@ using System.Text.Json;
 
 namespace Domestique.App;
 
+// Ein Gerät, das schon einmal verbunden war. Kind: "Trainer" oder "Pulsgurt".
+public sealed record SavedDevice(ulong Address, string Name, string Kind);
+
 public sealed class AppSettings
 {
     public static string Folder { get; } = Path.Combine(
@@ -13,6 +16,14 @@ public sealed class AppSettings
     public bool Docked { get; set; }                // hängt gerade oben wie eine Notch
     public ulong? TrainerAddress { get; set; }
     public ulong? StrapAddress { get; set; }
+    public List<SavedDevice> Devices { get; set; } = [];   // „Meine Geräte“ in den Bluetooth-Einstellungen
+
+    // Merkt sich ein verbundenes Gerät. Ein vorhandener Eintrag wird aktualisiert, nicht verdoppelt.
+    public void Remember(ulong address, string name, string kind)
+    {
+        Devices.RemoveAll(d => d.Address == address);
+        Devices.Insert(0, new SavedDevice(address, name, kind));
+    }
     public int FtpW { get; set; } = 250;            // für Leistungszonen und den Avatar
     public double RiderKg { get; set; } = 75;
     public double BikeKg { get; set; } = 8;

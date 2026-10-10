@@ -103,6 +103,72 @@ public class RouteTests
     }
 
     [Fact]
+    public void No_route_after_unload_rides_flat_and_keeps_distance()
+    {
+        var sim = new RouteSim(new RiderPhysics());
+        sim.Load(BuiltInRoutes.Load("Bergankunft"));
+        for (int i = 0; i < 400; i++) sim.Step(250, 0.25);
+        double ridden = sim.DistanceM;
+        sim.Unload();
+        Assert.Null(sim.Route);
+        Assert.Equal(0, sim.GradePercent);
+        Assert.False(sim.Finished);
+        Assert.Equal(ridden, sim.DistanceM);
+    }
+
+    [Theory]
+    [InlineData("Flachland-Runde", 2.5)]
+    [InlineData("Hügelland", 7)]
+    [InlineData("Bergankunft", 11)]
+    [InlineData("Zeitfahr-Oval", 1)]
+    public void Built_in_routes_have_their_length_and_grades(string name, double maxGrade)
+    {
+        var route = BuiltInRoutes.Load(name);
+        Assert.InRange(route.LengthM, BuiltInRoutes.LengthKm(name) * 990, BuiltInRoutes.LengthKm(name) * 1010);
+        Assert.All(route.Points, p => Assert.InRange(p.GradePercent, -maxGrade, maxGrade));
+    }
+
+    [Fact]
+    public void Mountain_finish_climbs_seven_percent_on_average()
+    {
+        var route = BuiltInRoutes.Load("Bergankunft");
+        double climb = (route.Points[^1].ElevationM - route.Points[0].ElevationM) / route.LengthM * 100;
+        Assert.InRange(climb, 6.3, 7.7);
+    }
+
+    [Fact]
+    public void Counts_climbed_meters_of_the_route()
+    {
+        var sim = new RouteSim(new RiderPhysics());
+        sim.Load(BuiltInRoutes.Load("Bergankunft"));
+        while (!sim.Finished) sim.Step(300, 1);
+        Assert.InRange(sim.ClimbedM, 940, 1000);                           // 600 → 1580 m
+        double atTop = sim.ClimbedM;
+        for (int i = 0; i < 60; i++) sim.Step(300, 1);                      // nach dem Ziel flach weiter
+        Assert.Equal(atTop, sim.ClimbedM);
+    }
+
+    [Fact]
+    public void Flat_route_and_no_route_add_almost_no_climb()
+    {
+        var sim = new RouteSim(new RiderPhysics());
+        for (int i = 0; i < 600; i++) sim.Step(250, 1);                     // ohne Strecke
+        Assert.Equal(0, sim.ClimbedM);
+        sim.Load(BuiltInRoutes.Load("Zeitfahr-Oval"));
+        while (!sim.Finished) sim.Step(250, 1);
+        Assert.InRange(sim.ClimbedM, 0, 25);
+    }
+
+    [Fact]
+    public void Moving_time_counts_only_while_pedaling()
+    {
+        var sim = new RouteSim(new RiderPhysics());
+        for (int i = 0; i < 40; i++) sim.Step(200, 0.25);                   // 10 s treten
+        for (int i = 0; i < 40; i++) sim.Step(0, 0.25);                     // 10 s rollen oder stehen
+        Assert.Equal(TimeSpan.FromSeconds(10), sim.MovingTime);
+    }
+
+    [Fact]
     public void Grade_limiter_changes_at_most_one_percent_per_second()
     {
         var limiter = new GradeLimiter();

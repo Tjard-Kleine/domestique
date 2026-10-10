@@ -4,11 +4,12 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:Domestique.App"
-        Title="Domestique – Einstellungen" Width="380" Height="640"
+        Title="Domestique – Einstellungen" Width="408" Height="712"
         WindowStyle="None" AllowsTransparency="True" Background="Transparent" ResizeMode="NoResize" Topmost="True"
         FontFamily="{DynamicResource UiFont}" Foreground="{DynamicResource TextBrush}" FontSize="12"
         UseLayoutRounding="True" TextOptions.TextFormattingMode="Display">
-    <Border CornerRadius="18" Background="{DynamicResource SurfaceSolidBrush}" BorderBrush="{DynamicResource StrokeBrush}"
+    <!-- Panel 380 × 640. Der durchsichtige Rand (PadX, PadY) ist Platz zum Nachfedern beim Öffnen; dort gehen Klicks durch. -->
+    <Border x:Name="Popover" Margin="14,36" CornerRadius="18" Background="{DynamicResource SurfaceSolidBrush}" BorderBrush="{DynamicResource StrokeBrush}"
             BorderThickness="1" Padding="14">
         <DockPanel>
             <!-- Kopf: Avatar, Titel, Schließen. Zum Verschieben hier ziehen. -->
@@ -25,29 +26,17 @@
             </Grid>
 
             <Border DockPanel.Dock="Top" CornerRadius="13" Background="{DynamicResource CardBrush}" Padding="2" Margin="0,0,0,4">
-                <UniformGrid Columns="4">
-                    <RadioButton x:Name="LookTab" Style="{StaticResource SettingsTab}" Content="&#xE790;" ToolTip="Darstellung" IsChecked="True" Checked="Tab_Checked"/>
-                    <RadioButton x:Name="RiderTab" Style="{StaticResource SettingsTab}" Content="&#xE77B;" ToolTip="Fahrer" Checked="Tab_Checked"/>
-                    <RadioButton x:Name="BluetoothTab" Style="{StaticResource SettingsTab}" Content="&#xE702;" ToolTip="Bluetooth" Checked="Tab_Checked"/>
-                    <RadioButton x:Name="LibraryTab" Style="{StaticResource SettingsTab}" Content="&#xE8F1;" ToolTip="Bibliothek" Checked="Tab_Checked"/>
-                </UniformGrid>
+                <Grid>
+                    <!-- Auswahl gleitet zum gewählten Reiter und federt nach -->
+                    <Border x:Name="TabPill" Height="36" Margin="3" CornerRadius="10" HorizontalAlignment="Left" Background="{DynamicResource AccentBrush}"/>
+                    <UniformGrid Columns="4">
+                        <RadioButton x:Name="LookTab" Style="{StaticResource SettingsTab}" Content="&#xE790;" ToolTip="Darstellung" IsChecked="True" Checked="Tab_Checked"/>
+                        <RadioButton x:Name="RiderTab" Style="{StaticResource SettingsTab}" Content="&#xE77B;" ToolTip="Fahrer" Checked="Tab_Checked"/>
+                        <RadioButton x:Name="BluetoothTab" Style="{StaticResource SettingsTab}" Content="&#xE702;" ToolTip="Bluetooth" Checked="Tab_Checked"/>
+                        <RadioButton x:Name="LibraryTab" Style="{StaticResource SettingsTab}" Content="&#xE8F1;" ToolTip="Bibliothek" Checked="Tab_Checked"/>
+                    </UniformGrid>
+                </Grid>
             </Border>
-
-            <!-- Fuß wie im Vorbild: zwei große Knöpfe -->
-            <UniformGrid DockPanel.Dock="Bottom" Columns="2" Margin="0,10,0,0">
-                <Button Style="{StaticResource PillButton}" Margin="0,0,4,0" Padding="0,9" Click="Close_Click">
-                    <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="&#xE73E;" FontFamily="{StaticResource IconFont}" Margin="0,1,8,0"/>
-                        <TextBlock Text="Fertig"/>
-                    </StackPanel>
-                </Button>
-                <Button Style="{StaticResource PillButton}" Margin="4,0,0,0" Padding="0,9" Click="Quit_Click">
-                    <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="&#xE7E8;" FontFamily="{StaticResource IconFont}" Margin="0,1,8,0"/>
-                        <TextBlock Text="Beenden"/>
-                    </StackPanel>
-                </Button>
-            </UniformGrid>
 
             <Grid>
                 <!-- ===== Darstellung ===== -->
@@ -142,7 +131,7 @@
                                 <CheckBox x:Name="ShowMapBox" DockPanel.Dock="Right" Style="{StaticResource ToggleSwitch}" Margin="10,0,0,0" Click="Look_Changed"/>
                                 <StackPanel>
                                     <TextBlock Text="Karte und Höhenprofil" Style="{StaticResource CardTitle}"/>
-                                    <TextBlock Text="Im Strecken-Tab. Aus: nur Kilometer, Steigung und Speed." Style="{StaticResource CardText}"/>
+                                    <TextBlock Text="Auf der Übersicht, sobald eine Strecke gewählt ist. Aus: nur Kilometer, Steigung und Speed." Style="{StaticResource CardText}"/>
                                 </StackPanel>
                             </DockPanel>
                         </Border>
@@ -165,39 +154,36 @@
                         <TextBlock Text="FAHRER" Style="{StaticResource SectionHeader}"/>
                         <Border Style="{StaticResource SettingCard}">
                             <DockPanel>
-                                <Border Style="{StaticResource IconTile}"><TextBlock Text="&#xE945;" Style="{StaticResource IconGlyph}"/></Border>
+                                <Border Style="{StaticResource IconTile}" VerticalAlignment="Center"><TextBlock Text="&#xE945;" Style="{StaticResource IconGlyph}"/></Border>
                                 <TextBox x:Name="FtpBox" DockPanel.Dock="Right" Style="{StaticResource InputBox}" Margin="10,0,0,0" TextChanged="Rider_Changed"/>
-                                <StackPanel>
+                                <StackPanel VerticalAlignment="Center">
                                     <TextBlock Text="FTP in Watt" Style="{StaticResource CardTitle}"/>
-                                    <TextBlock Text="Für die Leistungszonen und den Avatar." Style="{StaticResource CardText}"/>
                                 </StackPanel>
                             </DockPanel>
                         </Border>
                         <Border Style="{StaticResource SettingCard}">
                             <DockPanel>
-                                <Border Style="{StaticResource IconTile}"><TextBlock Text="&#xE77B;" Style="{StaticResource IconGlyph}"/></Border>
+                                <Border Style="{StaticResource IconTile}" VerticalAlignment="Center"><TextBlock Text="&#xE77B;" Style="{StaticResource IconGlyph}"/></Border>
                                 <TextBox x:Name="RiderBox" DockPanel.Dock="Right" Style="{StaticResource InputBox}" Margin="10,0,0,0" TextChanged="Rider_Changed"/>
-                                <StackPanel>
+                                <StackPanel VerticalAlignment="Center">
                                     <TextBlock Text="Fahrergewicht in kg" Style="{StaticResource CardTitle}"/>
-                                    <TextBlock Text="Bergauf zählt jedes Kilo." Style="{StaticResource CardText}"/>
                                 </StackPanel>
                             </DockPanel>
                         </Border>
                         <Border Style="{StaticResource SettingCard}">
                             <DockPanel>
-                                <Border Style="{StaticResource IconTile}"><TextBlock Text="kg" FontSize="12" FontWeight="Bold" Foreground="{DynamicResource OnAccentBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
+                                <Border Style="{StaticResource IconTile}" VerticalAlignment="Center"><TextBlock Text="kg" FontSize="12" FontWeight="Bold" Foreground="{DynamicResource OnAccentBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
                                 <TextBox x:Name="BikeBox" DockPanel.Dock="Right" Style="{StaticResource InputBox}" Margin="10,0,0,0" TextChanged="Rider_Changed"/>
-                                <StackPanel>
+                                <StackPanel VerticalAlignment="Center">
                                     <TextBlock Text="Radgewicht in kg" Style="{StaticResource CardTitle}"/>
-                                    <TextBlock Text="Rennrad etwa 8 kg." Style="{StaticResource CardText}"/>
                                 </StackPanel>
                             </DockPanel>
                         </Border>
                         <Border Style="{StaticResource SettingCard}">
                             <DockPanel>
-                                <Border Style="{StaticResource IconTile}"><TextBlock Text="Cd" FontSize="12" FontWeight="Bold" Foreground="{DynamicResource OnAccentBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
+                                <Border Style="{StaticResource IconTile}" VerticalAlignment="Center"><TextBlock Text="Cd" FontSize="12" FontWeight="Bold" Foreground="{DynamicResource OnAccentBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
                                 <TextBox x:Name="CdaBox" DockPanel.Dock="Right" Style="{StaticResource InputBox}" Margin="10,0,0,0" TextChanged="Rider_Changed"/>
-                                <StackPanel>
+                                <StackPanel VerticalAlignment="Center">
                                     <TextBlock Text="CdA in m²" Style="{StaticResource CardTitle}"/>
                                     <TextBlock Text="Etwa 0,32 Oberlenker, 0,25 Zeitfahrhaltung." Style="{StaticResource CardText}"/>
                                 </StackPanel>
@@ -225,20 +211,57 @@
                 <!-- ===== Bluetooth ===== -->
                 <DockPanel x:Name="BluetoothPage" Visibility="Collapsed" Margin="0,0,6,0">
                     <StackPanel DockPanel.Dock="Top">
-                        <TextBlock Text="VERBUNDEN" Style="{StaticResource SectionHeader}"/>
-                        <Border Style="{StaticResource SettingCard}">
-                            <StackPanel>
-                                <DockPanel Margin="0,0,0,6">
-                                    <Ellipse x:Name="TrainerDot" Width="7" Height="7" Margin="0,0,9,0" VerticalAlignment="Center" Fill="{DynamicResource MutedBrush}"/>
-                                    <TextBlock x:Name="TrainerStatusText" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
-                                </DockPanel>
-                                <DockPanel>
-                                    <Ellipse x:Name="StrapDot" Width="7" Height="7" Margin="0,0,9,0" VerticalAlignment="Center" Fill="{DynamicResource MutedBrush}"/>
-                                    <TextBlock x:Name="StrapStatusText" FontWeight="SemiBold"/>
-                                </DockPanel>
-                            </StackPanel>
+                        <!-- nur, wenn Bluetooth wirklich aus ist: gleiche Erkennung wie im Overlay -->
+                        <Border x:Name="BluetoothOffNotice" Style="{StaticResource SettingCard}" Visibility="Collapsed" Margin="0,8,0,0">
+                            <DockPanel>
+                                <Border Style="{StaticResource IconTile}" Background="{DynamicResource NegativeBrush}" VerticalAlignment="Center">
+                                    <TextBlock Text="&#xE702;" Style="{StaticResource IconGlyph}" Foreground="White"/>
+                                </Border>
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Text="Bluetooth ist aus" Style="{StaticResource CardTitle}"/>
+                                    <TextBlock Text="In den Windows-Einstellungen einschalten" Style="{StaticResource CardText}"/>
+                                </StackPanel>
+                            </DockPanel>
                         </Border>
-                        <TextBlock Text="SUCHEN" Style="{StaticResource SectionHeader}"/>
+
+                        <TextBlock Text="MEINE GERÄTE" Style="{StaticResource SectionHeader}"/>
+                        <Grid>
+                            <ListBox x:Name="MyDevicesList" Style="{StaticResource CardList}" MaxHeight="200">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel>
+                                            <DockPanel>
+                                                <TextBlock x:Name="Status" DockPanel.Dock="Right" Text="Nicht verbunden" FontSize="11.5" FontWeight="SemiBold"
+                                                           Foreground="{DynamicResource SubtleBrush}" VerticalAlignment="Center"/>
+                                                <TextBlock Text="{Binding Icon}" FontFamily="{StaticResource IconFont}" Foreground="{DynamicResource AccentBrush}"
+                                                           Margin="0,1,10,0" VerticalAlignment="Center"/>
+                                                <StackPanel>
+                                                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                                                    <TextBlock Text="{Binding Kind}" FontSize="11" Foreground="{DynamicResource SubtleBrush}"/>
+                                                </StackPanel>
+                                            </DockPanel>
+                                            <UniformGrid x:Name="Actions" Columns="2" Margin="0,8,0,0" Visibility="Collapsed">
+                                                <Button Content="Verbinden" Style="{StaticResource AccentButton}" Padding="0,6" Margin="0,0,4,0" Click="ConnectSaved_Click"/>
+                                                <Button Content="Entfernen" Style="{StaticResource PillButton}" Padding="0,6" Margin="4,0,0,0" Click="ForgetSaved_Click"/>
+                                            </UniformGrid>
+                                        </StackPanel>
+                                        <DataTemplate.Triggers>
+                                            <DataTrigger Binding="{Binding IsConnected}" Value="True">
+                                                <Setter TargetName="Status" Property="Text" Value="Verbunden"/>
+                                                <Setter TargetName="Status" Property="Foreground" Value="{DynamicResource PositiveBrush}"/>
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True">
+                                                <Setter TargetName="Actions" Property="Visibility" Value="Visible"/>
+                                            </DataTrigger>
+                                        </DataTemplate.Triggers>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                            <TextBlock x:Name="MyDevicesEmpty" Style="{StaticResource CardText}" Margin="4,0,0,4" Visibility="Collapsed"
+                                       Text="Noch keine Geräte. Einmal verbundene Trainer und Pulsgurte erscheinen hier."/>
+                        </Grid>
+
+                        <TextBlock Text="ANDERE GERÄTE" Style="{StaticResource SectionHeader}"/>
                         <UniformGrid Columns="2" Margin="0,0,0,8">
                             <Button Content="Trainer suchen" Style="{StaticResource PillButton}" Margin="0,0,4,0" Click="ScanTrainer_Click"/>
                             <Button Content="Pulsgurt suchen" Style="{StaticResource PillButton}" Margin="4,0,0,0" Click="ScanStrap_Click"/>
@@ -248,21 +271,25 @@
                             <TextBlock Text="Alle Geräte zeigen (für Trainer, die ihren Dienst nicht ankündigen)" Style="{StaticResource CardText}" VerticalAlignment="Center"/>
                         </DockPanel>
                     </StackPanel>
-                    <StackPanel DockPanel.Dock="Bottom">
-                        <TextBlock x:Name="BleInfo" Style="{StaticResource CardText}" Margin="4,4,0,8"/>
-                        <UniformGrid Columns="2">
-                            <Button Content="Als Trainer" Style="{StaticResource AccentButton}" Margin="0,0,4,0" Click="UseAsTrainer_Click"/>
-                            <Button Content="Als Pulsgurt" Style="{StaticResource AccentButton}" Margin="4,0,0,0" Click="UseAsStrap_Click"/>
-                        </UniformGrid>
-                    </StackPanel>
+                    <TextBlock x:Name="BleInfo" DockPanel.Dock="Bottom" Style="{StaticResource CardText}" Margin="4,6,0,0"/>
                     <Grid>
+                        <!-- gefundene Geräte: erst nach dem Antippen wählt man, ob Trainer oder Pulsgurt -->
                         <ListBox x:Name="DeviceList" Style="{StaticResource CardList}">
                             <ListBox.ItemTemplate>
                                 <DataTemplate>
                                     <StackPanel>
                                         <TextBlock Text="{Binding Name}" FontWeight="SemiBold"/>
                                         <TextBlock Text="{Binding Detail}" FontSize="11" Foreground="{DynamicResource SubtleBrush}"/>
+                                        <UniformGrid x:Name="Actions" Columns="2" Margin="0,8,0,0" Visibility="Collapsed">
+                                            <Button Content="Als Trainer" Style="{StaticResource AccentButton}" Padding="0,6" Margin="0,0,4,0" Click="UseAsTrainer_Click"/>
+                                            <Button Content="Als Pulsgurt" Style="{StaticResource AccentButton}" Padding="0,6" Margin="4,0,0,0" Click="UseAsStrap_Click"/>
+                                        </UniformGrid>
                                     </StackPanel>
+                                    <DataTemplate.Triggers>
+                                        <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True">
+                                            <Setter TargetName="Actions" Property="Visibility" Value="Visible"/>
+                                        </DataTrigger>
+                                    </DataTemplate.Triggers>
                                 </DataTemplate>
                             </ListBox.ItemTemplate>
                         </ListBox>
@@ -275,7 +302,6 @@
                 <DockPanel x:Name="LibraryPage" Visibility="Collapsed" Margin="0,0,6,0">
                     <StackPanel DockPanel.Dock="Top">
                         <TextBlock Text="STRECKEN" Style="{StaticResource SectionHeader}"/>
-                        <TextBlock Text="GPX-Dateien. Du kannst sie auch direkt aufs Overlay ziehen. Doppelklick lädt eine Strecke." Style="{StaticResource CardText}" Margin="4,0,0,8"/>
                     </StackPanel>
                     <UniformGrid DockPanel.Dock="Bottom" Columns="3" Margin="0,8,0,0">
                         <Button Content="Importieren" Style="{StaticResource AccentButton}" Margin="0,0,4,0" Click="Import_Click"/>

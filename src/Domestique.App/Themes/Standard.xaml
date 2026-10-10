@@ -44,6 +44,7 @@
     <FontFamily x:Key="LabelFont">Segoe UI Variable Text, Segoe UI</FontFamily>
     <FontFamily x:Key="NumberFont">Segoe UI Variable Display, Segoe UI</FontFamily>
     <FontWeight x:Key="NumberWeight">SemiBold</FontWeight>
+    <sys:Double x:Key="HeroNumberSize">48</sys:Double>   <!-- große Wattzahl auf der Übersicht -->
     <sys:Double x:Key="MinOpacity">0.2</sys:Double>
     <CornerRadius x:Key="ShellRadius">20</CornerRadius>
     <CornerRadius x:Key="CardRadius">14</CornerRadius>

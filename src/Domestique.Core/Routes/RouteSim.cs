@@ -13,6 +13,9 @@ public sealed class RouteSim(RiderPhysics physics)
     public double RouteDistanceM => DistanceM - _routeStartM;
     public bool Finished => Route is not null && RouteDistanceM >= Route.LengthM;
     public double GradePercent => Route is null || Finished ? 0 : Route.At(RouteDistanceM).GradePercent;
+    public double ClimbedM { get; private set; }                         // Höhenmeter bergauf; ohne Strecke kommt nichts dazu
+    public TimeSpan MovingTime { get; private set; }                     // Fahrzeit: nur Zeit, in der Watt anliegen
+    private double ElevationM => Route is null ? 0 : Route.At(Math.Min(RouteDistanceM, Route.LengthM)).ElevationM;
     private double _routeStartM;
 
     // Die Gesamtdistanz der Fahrt läuft weiter, die Strecke beginnt bei ihrem Start.
@@ -22,7 +25,16 @@ public sealed class RouteSim(RiderPhysics physics)
         _routeStartM = DistanceM;
     }
 
-    public void Step(double powerW, double dt) => DistanceM += physics.Step(powerW, GradePercent, dt);
+    // „Keine Strecke“: die Fahrt geht flach weiter, Distanz und Geschwindigkeit bleiben erhalten.
+    public void Unload() => Route = null;
+
+    public void Step(double powerW, double dt)
+    {
+        double before = ElevationM;
+        DistanceM += physics.Step(powerW, GradePercent, dt);
+        ClimbedM += Math.Max(0, ElevationM - before);
+        if (powerW > 0) MovingTime += TimeSpan.FromSeconds(dt);
+    }
 }
 
 // Steigungswechsel am Trainer begrenzen, damit der Widerstand nicht ruckartig springt.

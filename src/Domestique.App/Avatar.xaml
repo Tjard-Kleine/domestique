@@ -1,60 +1,115 @@
-<!-- Der Begleiter „Domestique“. Zeigt Zustand und Anstrengung über den Gesichtsausdruck. Nur statische Formen. -->
+<!-- Der Begleiter „Domestique“. Zeigt Zustand und Anstrengung über den Gesichtsausdruck.
+     Bewegt sich nur bei Ereignissen (Begrüßen, Winken, Stupsen, Hüpfen), nie dauerhaft. -->
 <UserControl x:Class="Domestique.App.Avatar"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              Width="64" Height="52" IsHitTestVisible="False">
     <Viewbox>
         <Canvas Width="64" Height="52">
-            <!-- Körper: weiches Marshmallow wie im Vorbild -->
-            <Rectangle Canvas.Left="2" Canvas.Top="3" Width="60" Height="47" RadiusX="22" RadiusY="20"
-                       Fill="{DynamicResource AvatarBodyBrush}" Stroke="#14000000" StrokeThickness="1"/>
-            <Rectangle Canvas.Left="10" Canvas.Top="6" Width="26" Height="6" RadiusX="3" RadiusY="3" Fill="#88FFFFFF"/>
+            <!-- weicher Schein hinter dem Avatar: beim Begrüßen und beim Darüberfahren (Sheet 1 und 8) -->
+            <Ellipse x:Name="Glow" Canvas.Left="-14" Canvas.Top="-8" Width="92" Height="72" Opacity="0" IsHitTestVisible="False"
+                     Fill="{DynamicResource AccentBrush}">
+                <Ellipse.OpacityMask>
+                    <RadialGradientBrush>
+                        <GradientStop Color="#A0000000" Offset="0"/>
+                        <GradientStop Color="#40000000" Offset="0.55"/>
+                        <GradientStop Color="#00000000" Offset="1"/>
+                    </RadialGradientBrush>
+                </Ellipse.OpacityMask>
+            </Ellipse>
 
-            <!-- Wangen -->
-            <Ellipse x:Name="Cheeks1" Canvas.Left="11" Canvas.Top="30" Width="10" Height="5" Fill="{DynamicResource AvatarCheekBrush}"/>
-            <Ellipse x:Name="Cheeks2" Canvas.Left="43" Canvas.Top="30" Width="10" Height="5" Fill="{DynamicResource AvatarCheekBrush}"/>
-
-            <!-- offene Augen: Blinzeln skaliert sie kurz zusammen, Suchen verschiebt sie zur Seite -->
-            <Canvas x:Name="EyesOpen">
+            <!-- Figur: staucht, hüpft und schwankt als Ganzes, Ursprung unten in der Mitte -->
+            <Canvas x:Name="Figure" Width="64" Height="52" RenderTransformOrigin="0.5,1">
                 <Canvas.RenderTransform>
                     <TransformGroup>
-                        <ScaleTransform x:Name="EyeScale" CenterY="24"/>
-                        <TranslateTransform x:Name="EyeShift"/>
+                        <ScaleTransform x:Name="FigureScale"/>
+                        <TranslateTransform x:Name="FigureShift"/>
                     </TransformGroup>
                 </Canvas.RenderTransform>
-                <Ellipse Canvas.Left="21" Canvas.Top="18" Width="7.5" Height="12" Fill="{DynamicResource AvatarEyeBrush}"/>
-                <Ellipse Canvas.Left="35.5" Canvas.Top="18" Width="7.5" Height="12" Fill="{DynamicResource AvatarEyeBrush}"/>
-                <Ellipse Canvas.Left="22.5" Canvas.Top="19.5" Width="2.5" Height="3" Fill="#CCFFFFFF"/>
-                <Ellipse Canvas.Left="37" Canvas.Top="19.5" Width="2.5" Height="3" Fill="#CCFFFFFF"/>
+
+                <!-- Arme: freistehend wie im Vorbild, nur beim Winken sichtbar -->
+                <Canvas x:Name="Arms" Opacity="0" IsHitTestVisible="False">
+                    <Ellipse x:Name="LeftArm" Canvas.Left="-8" Canvas.Top="37" Width="9" Height="9"
+                             Fill="{DynamicResource AvatarBodyBrush}" Stroke="#14000000" StrokeThickness="1"/>
+                    <Rectangle Canvas.Left="60" Canvas.Top="17" Width="13" Height="7" RadiusX="3.5" RadiusY="3.5"
+                               Fill="{DynamicResource AvatarBodyBrush}" Stroke="#14000000" StrokeThickness="1">
+                        <Rectangle.RenderTransform>
+                            <RotateTransform x:Name="ArmAngle" CenterX="0" CenterY="3.5" Angle="-30"/>
+                        </Rectangle.RenderTransform>
+                    </Rectangle>
+                </Canvas>
+
+                <!-- Körper: weiches Marshmallow wie im Vorbild -->
+                <Rectangle Canvas.Left="2" Canvas.Top="3" Width="60" Height="47" RadiusX="22" RadiusY="20"
+                           Fill="{DynamicResource AvatarBodyBrush}" Stroke="#14000000" StrokeThickness="1"/>
+                <!-- Farbton der Leistungszone, blendet weich über (wie die Umfärbung in Sheet 7) -->
+                <Rectangle x:Name="ZoneTint" Canvas.Left="2" Canvas.Top="3" Width="60" Height="47" RadiusX="22" RadiusY="20" Opacity="0">
+                    <Rectangle.Fill>
+                        <SolidColorBrush x:Name="TintBrush" Color="#338CFF"/>
+                    </Rectangle.Fill>
+                </Rectangle>
+                <Rectangle Canvas.Left="10" Canvas.Top="6" Width="26" Height="6" RadiusX="3" RadiusY="3" Fill="#88FFFFFF"/>
+
+                <!-- Wangen -->
+                <Ellipse x:Name="Cheeks1" Canvas.Left="11" Canvas.Top="30" Width="10" Height="5" Fill="{DynamicResource AvatarCheekBrush}"/>
+                <Ellipse x:Name="Cheeks2" Canvas.Left="43" Canvas.Top="30" Width="10" Height="5" Fill="{DynamicResource AvatarCheekBrush}"/>
+
+                <!-- offene Augen: Blinzeln skaliert sie kurz zusammen, Suchen verschiebt sie zur Seite -->
+                <Canvas x:Name="EyesOpen">
+                    <Canvas.RenderTransform>
+                        <TransformGroup>
+                            <ScaleTransform x:Name="EyeScale" CenterY="24"/>
+                            <TranslateTransform x:Name="EyeShift"/>
+                        </TransformGroup>
+                    </Canvas.RenderTransform>
+                    <Ellipse Canvas.Left="21" Canvas.Top="18" Width="7.5" Height="12" Fill="{DynamicResource AvatarEyeBrush}"/>
+                    <Ellipse Canvas.Left="35.5" Canvas.Top="18" Width="7.5" Height="12" Fill="{DynamicResource AvatarEyeBrush}"/>
+                    <Ellipse Canvas.Left="22.5" Canvas.Top="19.5" Width="2.5" Height="3" Fill="#CCFFFFFF"/>
+                    <Ellipse Canvas.Left="37" Canvas.Top="19.5" Width="2.5" Height="3" Fill="#CCFFFFFF"/>
+                </Canvas>
+
+                <!-- konzentriert: gerade Brauen, entschlossen statt böse -->
+                <Path x:Name="Brows" Data="M21,14.8 L28.5,14.8 M35.5,14.8 L43,14.8" Stroke="{DynamicResource AvatarEyeBrush}"
+                      StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+
+                <!-- schlafend, und zufrieden beim Winken (Sheet 2) -->
+                <Path x:Name="EyesClosed" Data="M20.5,24 Q25,28 29.5,24 M34.5,24 Q39,28 43.5,24" Stroke="{DynamicResource AvatarEyeBrush}"
+                      StrokeThickness="2.2" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+                <TextBlock x:Name="Zzz" Canvas.Left="48" Canvas.Top="-2" Text="z" FontSize="11" FontWeight="Bold"
+                           Foreground="{DynamicResource SubtleBrush}"/>
+
+                <!-- glücklich -->
+                <Path x:Name="EyesHappy" Data="M20.5,26 Q25,19 29.5,26 M34.5,26 Q39,19 43.5,26" Stroke="{DynamicResource AvatarEyeBrush}"
+                      StrokeThickness="2.4" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+
+                <!-- genießt das Darüberfahren: schmale, nach innen geneigte Augen (Sheet 8) -->
+                <Path x:Name="EyesSquint" Data="M21.5,23 L28,25 M36,25 L42.5,23" Stroke="{DynamicResource AvatarEyeBrush}"
+                      StrokeThickness="2.2" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+
+                <!-- benommen: Spiral-Augen wie im Vorbild, aus Halbkreisen mit wachsendem Radius -->
+                <Path x:Name="EyesDizzy" Stroke="{DynamicResource AvatarEyeBrush}" StrokeThickness="1.6" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                      Data="M25,24 a1,1 0 0 1 2,0 a2,2 0 0 1 -4,0 a3,3 0 0 1 6,0 a4,4 0 0 1 -8,0
+                            M39,24 a1,1 0 0 0 -2,0 a2,2 0 0 0 4,0 a3,3 0 0 0 -6,0 a4,4 0 0 0 8,0"/>
+
+                <!-- am Limit: zusammengekniffen, Schweißtropfen -->
+                <Path x:Name="EyesStrain" Data="M21,20 L28.5,24 L21,28 M43,20 L35.5,24 L43,28" Stroke="{DynamicResource AvatarEyeBrush}"
+                      StrokeThickness="2.2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"/>
+                <Path x:Name="Sweat" Data="M52,9 Q49,14 52,16 Q55,14 52,9 Z" Fill="#7FB8E8FF"/>
             </Canvas>
 
-            <!-- konzentriert: gerade Brauen, entschlossen statt böse -->
-            <Path x:Name="Brows" Data="M21,14.8 L28.5,14.8 M35.5,14.8 L43,14.8" Stroke="{DynamicResource AvatarEyeBrush}"
-                  StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
-
-            <!-- schlafend -->
-            <Path x:Name="EyesClosed" Data="M20.5,24 Q25,28 29.5,24 M34.5,24 Q39,28 43.5,24" Stroke="{DynamicResource AvatarEyeBrush}"
-                  StrokeThickness="2.2" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
-            <TextBlock x:Name="Zzz" Canvas.Left="48" Canvas.Top="-2" Text="z" FontSize="11" FontWeight="Bold"
-                       Foreground="{DynamicResource SubtleBrush}"/>
-
-            <!-- glücklich -->
-            <Path x:Name="EyesHappy" Data="M20.5,26 Q25,19 29.5,26 M34.5,26 Q39,19 43.5,26" Stroke="{DynamicResource AvatarEyeBrush}"
-                  StrokeThickness="2.4" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
-
-            <!-- benommen: Spiral-Augen wie im Vorbild, aus Halbkreisen mit wachsendem Radius -->
-            <Path x:Name="EyesDizzy" Stroke="{DynamicResource AvatarEyeBrush}" StrokeThickness="1.6" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
-                  Data="M25,24 a1,1 0 0 1 2,0 a2,2 0 0 1 -4,0 a3,3 0 0 1 6,0 a4,4 0 0 1 -8,0
-                        M39,24 a1,1 0 0 0 -2,0 a2,2 0 0 0 4,0 a3,3 0 0 0 -6,0 a4,4 0 0 0 8,0"/>
-
-            <!-- am Limit: zusammengekniffen, Schweißtropfen -->
-            <Path x:Name="EyesStrain" Data="M21,20 L28.5,24 L21,28 M43,20 L35.5,24 L43,28" Stroke="{DynamicResource AvatarEyeBrush}"
-                  StrokeThickness="2.2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"/>
-            <Path x:Name="Sweat" Data="M52,9 Q49,14 52,16 Q55,14 52,9 Z" Fill="#7FB8E8FF"/>
+            <!-- Abzeichen oben links wie in Sheet 2–6: „…“ beim Suchen, Haken in Grün, sobald verbunden -->
+            <Canvas x:Name="Badge" Canvas.Left="-1" Canvas.Top="-1" Width="15" Height="15" Visibility="Collapsed" IsHitTestVisible="False">
+                <Ellipse x:Name="BadgeDot" Width="15" Height="15" Fill="{DynamicResource AccentBrush}"
+                         Stroke="{DynamicResource SurfaceSolidBrush}" StrokeThickness="2"/>
+                <Path x:Name="BadgeBusy" Data="M4.5,7.5 h0.01 M7.5,7.5 h0.01 M10.5,7.5 h0.01" Stroke="{DynamicResource OnAccentBrush}"
+                      StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+                <Path x:Name="BadgeDone" Data="M4.4,7.8 L6.6,10 L10.7,5.4" Stroke="White" StrokeThickness="1.8"
+                      StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Visibility="Collapsed"/>
+            </Canvas>
 
             <!-- Aufnahme läuft -->
             <Ellipse x:Name="RecDot" Canvas.Left="0" Canvas.Top="0" Width="11" Height="11" Fill="{DynamicResource NegativeBrush}"
-                     Stroke="{DynamicResource SurfaceSolidBrush}" StrokeThickness="2"/>
+                     Stroke="{DynamicResource SurfaceSolidBrush}" StrokeThickness="2" Visibility="Collapsed" IsHitTestVisible="False"/>
         </Canvas>
     </Viewbox>
 </UserControl>
