@@ -29,6 +29,19 @@ internal static class RouteGeometry
         return Frozen(r, project);
     }
 
+    // Gefahrener Teil: die Linienpunkte bis zur aktuellen Position, dazu die Position selbst.
+    // Die Linie hat einen Punkt alle 10 Rasterpunkte, daraus ergibt sich die Anzahl ohne Suchen.
+    public static PointCollection Done(PointCollection line, Route r, double distanceM, Func<RoutePoint, Point> project)
+    {
+        int grid = Math.Clamp((int)(distanceM / GpxLoader.StepM), 0, r.Points.Count - 1);
+        int count = Math.Min(grid / 10 + 1, line.Count);
+        var done = new PointCollection(count + 1);
+        for (int i = 0; i < count; i++) done.Add(line[i]);
+        done.Add(project(r.At(distanceM)));
+        done.Freeze();
+        return done;
+    }
+
     // Fläche unter dem Höhenprofil: die Linie plus die beiden unteren Ecken
     public static PointCollection Area(PointCollection profile, double h)
     {

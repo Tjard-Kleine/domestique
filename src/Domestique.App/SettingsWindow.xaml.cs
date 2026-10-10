@@ -1,7 +1,9 @@
+using System.ComponentModel;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media;
 using System.Windows.Threading;
 using Domestique.Ble;
 using Domestique.Core.Library;
@@ -16,12 +18,14 @@ public sealed record LibraryItem(string FilePath, string Label);
 // Gespeichert wird kurz nach der letzten Änderung, damit ein gezogener Regler nicht bei jedem Pixel schreibt.
 public partial class SettingsWindow : Window
 {
+    public const double PadX = 14, PadY = 36;                                // durchsichtiger Rand ums Panel (Popover.Margin)
     private readonly MainWindow _main;
     private readonly AppSettings _s;
     private readonly LibraryStore _library;
     private readonly DispatcherTimer _save = new() { Interval = TimeSpan.FromMilliseconds(600) };
     private readonly DispatcherTimer _status = new() { Interval = TimeSpan.FromSeconds(1) };
     private readonly bool _loading = true;
+    private bool _closingAnimated;
 
     public SettingsWindow(MainWindow main, AppSettings settings, LibraryStore library)
     {
@@ -47,9 +51,23 @@ public partial class SettingsWindow : Window
         DifficultySlider.Value = _s.Difficulty * 100;
         UpdateValueLabels();
         RefreshLibrary();
+        RefreshMyDevices();
         HeaderAvatar.Mood = Mood.Idle;
         _loading = false;
+        Popover.Opacity = 0;                                                  // unsichtbar bis zum ersten Bild, dann aufspringen
+        ContentRendered += (_, _) => PlayOpen();
         Closed += (_, _) => { _status.Stop(); if (_save.IsEnabled) { _save.Stop(); _s.Save(); } };
+    }
+
+    // Öffnen wie ein Popover aus dem Zahnrad: wächst etwas über seine Größe hinaus und schnappt zurück,
+    // die Karten erscheinen nacheinander, der Avatar im Kopf begrüßt
+    private void PlayOpen()
+    {
+        MovePill(animate: false);
+        bool below = Owner is null || Top >= Owner.Top;
+        Motion.PopIn(Popover, 0.9, 460, 0.9, below ? 0 : 1);
+        Motion.Reveal(PageItems(CurrentPage), 140, 35, rise: true);
+        HeaderAvatar.Greet(260);
     }
 
     private void ScheduleSave()
@@ -68,6 +86,33 @@ public partial class SettingsWindow : Window
         BluetoothPage.Visibility = Show(BluetoothTab.IsChecked == true);
         LibraryPage.Visibility = Show(LibraryTab.IsChecked == true);
         if (BluetoothTab.IsChecked == true) { RefreshStatus(); _status.Start(); } else _status.Stop();
+        if (!IsLoaded) return;                                                // Öffnen zeigt die Seite ohnehin an
+        Motion.Reveal(PageItems(CurrentPage), 30, 30, rise: true);
+        MovePill(animate: true);
+    }
+
+    private FrameworkElement CurrentPage =>
+        RiderTab.IsChecked == true ? RiderPage : BluetoothTab.IsChecked == true ? BluetoothPage : LibraryTab.IsChecked == true ? LibraryPage : LookPage;
+
+    // Karten einer Seite in der Reihenfolge, in der sie erscheinen
+    private static IEnumerable<UIElement> PageItems(FrameworkElement page) => page switch
+    {
+        ScrollViewer { Content: Panel panel } => panel.Children.Cast<UIElement>(),
+        Panel panel => panel.Children.Cast<UIElement>().SelectMany(c => c is StackPanel s ? s.Children.Cast<UIElement>() : new[] { c }),
+        _ => [page],
+    };
+
+    // gleitet unter den gewählten Reiter und streckt sich unterwegs
+    private void MovePill(bool animate)
+    {
+        var tabs = new[] { LookTab, RiderTab, BluetoothTab, LibraryTab };
+        double step = LookTab.ActualWidth, x = Array.FindIndex(tabs, t => t.IsChecked == true) * step;
+        TabPill.Width = Math.Max(0, step - 6);
+        var shift = Motion.Shift(TabPill);
+        if (!animate) { shift.X = x; return; }
+        Motion.Run(shift, TranslateTransform.XProperty, shift.X, x, 380, Motion.Glide);
+        TabPill.RenderTransformOrigin = new Point(0.5, 0.5);
+        Motion.Keys(Motion.Scale(TabPill), ScaleTransform.ScaleXProperty, 0, [(0, 1), (110, 1.25), (400, 1)], Motion.Pop);
     }
 
     private static Visibility Show(bool visible) => visible ? Visibility.Visible : Visibility.Collapsed;
@@ -131,12 +176,38 @@ public partial class SettingsWindow : Window
 
     // ---------- Bluetooth ----------
 
+    public void ShowBluetooth() => BluetoothTab.IsChecked = true;
+
+    // Einmal pro Sekunde, solange der Reiter offen ist: Hinweis „Bluetooth ist aus“ und Verbunden/Nicht verbunden
     private void RefreshStatus()
     {
-        TrainerStatusText.Text = _main.TrainerStatus;
-        StrapStatusText.Text = _main.StrapStatus;
-        TrainerDot.SetResourceReference(System.Windows.Shapes.Shape.FillProperty, _main.TrainerStatus.EndsWith("verbunden") ? "PositiveBrush" : "MutedBrush");
-        StrapDot.SetResourceReference(System.Windows.Shapes.Shape.FillProperty, _main.StrapStatus == "Pulsgurt verbunden" ? "PositiveBrush" : "MutedBrush");
+        BluetoothOffNotice.Visibility = Show(_main.BluetoothOff);
+        var items = MyDevicesList.ItemsSource as List<MyDeviceItem>;
+        if (items is null || !items.Select(i => i.Device).SequenceEqual(_s.Devices)) RefreshMyDevices();
+        else foreach (var item in items) item.IsConnected = _main.IsConnected(item.Device);
+    }
+
+    private void RefreshMyDevices()
+    {
+        var selected = (MyDevicesList.SelectedItem as MyDeviceItem)?.Device.Address;
+        var items = _s.Devices.Select(d => new MyDeviceItem(d) { IsConnected = _main.IsConnected(d) }).ToList();
+        MyDevicesList.ItemsSource = items;
+        MyDevicesList.SelectedItem = items.FirstOrDefault(i => i.Device.Address == selected);
+        MyDevicesEmpty.Visibility = Show(items.Count == 0);
+    }
+
+    private async void ConnectSaved_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is not MyDeviceItem item) return;
+        await UseAsync(item.Device.Address, item.Device.Name, item.Device.Kind);
+    }
+
+    private void ForgetSaved_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is not MyDeviceItem item) return;
+        _s.Devices.Remove(item.Device);
+        _s.Save();
+        RefreshMyDevices();
     }
 
     private async void ScanTrainer_Click(object sender, RoutedEventArgs e) => await ScanAsync(BleUuids.FitnessMachineService);
@@ -157,32 +228,32 @@ public partial class SettingsWindow : Window
             DeviceEmpty.Visibility = Show(devices.Count == 0);
             BleInfo.Text = devices.Count == 0
                 ? "Nichts gefunden. Hersteller-App und Zwift geschlossen? Ein gerade verbundenes Gerät funkt meist nicht."
-                : "Gerät antippen und unten zuordnen.";
+                : "Gerät antippen, dann als Trainer oder Pulsgurt speichern.";
         }
         catch (Exception ex) { BleInfo.Text = ex.Message; }
     }
 
     private async void UseAsTrainer_Click(object sender, RoutedEventArgs e)
     {
-        if (DeviceList.SelectedItem is not DeviceItem device) { BleInfo.Text = "Erst ein Gerät auswählen."; return; }
-        _s.TrainerAddress = device.Address;
-        _s.Save();
-        BleInfo.Text = "Verbinde Trainer …";
-        BleInfo.Text = await _main.ReconnectTrainerAsync()
-            ? "Trainer verbunden und gespeichert."
-            : "Verbindung klappt noch nicht, die App versucht es weiter.";
-        RefreshStatus();
+        if ((sender as FrameworkElement)?.DataContext is DeviceItem device) await UseAsync(device.Address, device.Name, "Trainer");
     }
 
     private async void UseAsStrap_Click(object sender, RoutedEventArgs e)
     {
-        if (DeviceList.SelectedItem is not DeviceItem device) { BleInfo.Text = "Erst ein Gerät auswählen."; return; }
-        _s.StrapAddress = device.Address;
+        if ((sender as FrameworkElement)?.DataContext is DeviceItem device) await UseAsync(device.Address, device.Name, "Pulsgurt");
+    }
+
+    // Gerät speichern (erscheint unter „Meine Geräte“) und als Trainer bzw. Pulsgurt verbinden
+    private async Task UseAsync(ulong address, string name, string kind)
+    {
+        bool trainer = kind == "Trainer";
+        if (trainer) _s.TrainerAddress = address; else _s.StrapAddress = address;
+        _s.Remember(address, name, kind);
         _s.Save();
-        BleInfo.Text = "Verbinde Pulsgurt …";
-        BleInfo.Text = await _main.ReconnectStrapAsync()
-            ? "Pulsgurt verbunden und gespeichert."
-            : "Verbindung klappt noch nicht, die App versucht es weiter.";
+        RefreshMyDevices();
+        BleInfo.Text = $"Verbinde {kind} …";
+        bool ok = trainer ? await _main.ReconnectTrainerAsync() : await _main.ReconnectStrapAsync();
+        BleInfo.Text = ok ? $"{name} ist verbunden." : "Verbindung klappt noch nicht, die App versucht es weiter.";
         RefreshStatus();
     }
 
@@ -225,7 +296,33 @@ public partial class SettingsWindow : Window
 
     private void Header_MouseLeftButtonDown(object sender, MouseButtonEventArgs e) => DragMove();
 
-    private void Close_Click(object sender, RoutedEventArgs e) => Close();
+    // schrumpft zurück zum Zahnrad, dann zu
+    private void Close_Click(object sender, RoutedEventArgs e)
+    {
+        if (_closingAnimated) return;
+        _closingAnimated = true;
+        Motion.PopOut(Popover, 0.92, 170, Close);
+    }
+}
 
-    private void Quit_Click(object sender, RoutedEventArgs e) => _main.Close();
+// Eintrag unter „Meine Geräte“. IsConnected meldet Änderungen, damit die Liste nicht neu aufgebaut werden muss.
+public sealed class MyDeviceItem(SavedDevice device) : INotifyPropertyChanged
+{
+    private bool _connected;
+    public SavedDevice Device { get; } = device;
+    public string Name => Device.Name;
+    public string Kind => Device.Kind;
+    public string Icon => Device.Kind == "Trainer" ? "" : "";
+    public event PropertyChangedEventHandler? PropertyChanged;
+
+    public bool IsConnected
+    {
+        get => _connected;
+        set
+        {
+            if (_connected == value) return;
+            _connected = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsConnected)));
+        }
+    }
 }
