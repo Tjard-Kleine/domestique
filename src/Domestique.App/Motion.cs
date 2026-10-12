@@ -1,4 +1,4 @@
-using System.Runtime.CompilerServices;
+﻿using System.Runtime.CompilerServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -23,6 +23,7 @@ internal static class Motion
     public static readonly IEasingFunction Out = Ease(new CubicEase { EasingMode = EasingMode.EaseOut });
     public static readonly IEasingFunction In = Ease(new CubicEase { EasingMode = EasingMode.EaseIn });
     public static readonly IEasingFunction Swing = Ease(new SineEase { EasingMode = EasingMode.EaseInOut });
+    public static readonly IEasingFunction Linear = Ease(new PowerEase { Power = 1, EasingMode = EasingMode.EaseIn });
 
     // laufende Animation je Objekt und Eigenschaft: Eine ersetzte Animation darf beim Ende nichts mehr setzen
     private static readonly ConditionalWeakTable<DependencyObject, Dictionary<DependencyProperty, AnimationTimeline>> Running = new();
