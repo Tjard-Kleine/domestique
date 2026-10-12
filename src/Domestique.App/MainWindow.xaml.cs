@@ -1,4 +1,4 @@
-using System.ComponentModel;
+﻿using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Windows;
@@ -6,6 +6,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using Domestique.Ble;
 using Domestique.Core;
@@ -28,6 +29,8 @@ public partial class MainWindow : Window
     private const double SnapDistance = 28, CenterSnap = 90;  // Andocken am oberen Rand, Einrasten in der Mitte
     private const double Overhang = 12;                       // durchsichtiger Rand unten (Root.Margin): Platz zum Nachfedern
     private const double TabStep = 36;                        // Breite eines Tabs in der Kopfzeile samt Abstand
+    private const double CompactW = 288, CompactH = 36, CompactR = 14;   // minimierte Notch (wie Coucou kompakt)
+    private const double NotchW = 184;                        // so schmal zieht sie sich beim Beenden in den Rand zurück
     private static readonly TimeSpan StaleAfter = TimeSpan.FromSeconds(3);
     private static readonly string RidesFolder = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Domestique");
@@ -48,8 +51,11 @@ public partial class MainWindow : Window
     private readonly GradeLimiter _limiter = new();
     private readonly RideRecorder _ride = new(RidesFolder);
     private readonly Counter _ergCounter = new();                         // ERG-Ziel zählt bei ± weich zum neuen Wert
-    private readonly List<long> _pokes = new();                           // Zeitpunkte der letzten Stupser auf den Avatar
-    private static readonly Random Rng = new();
+    private readonly List<long> _pokes = new();                           // Zeitpunkte der letzten Klapse auf den Avatar
+    private readonly Island _island;
+    private bool _greeting, _compact, _anchorTop, _switching;
+    private Color _surface;                                        // Hintergrund mit eingestellter Deckkraft
+    private bool _opaque = true;                                   // ganz deckend, solange kein Trainer verbunden ist
     private BleTrainer? _trainer;
     private BleHeartRate? _strap;
     private SettingsWindow? _settingsWindow;
@@ -74,12 +80,24 @@ public partial class MainWindow : Window
         _guard = new ModeGuard(command => _trainer?.Control?.SetTarget(command));
         _timer.Tick += (_, _) => OnTick();
         _toastTimer.Tick += (_, _) => NextToast();
+        _island = new Island(Shell, LeftEar, RightEar);
+        Greeting.ChooseTarget = () => _bluetoothOff ? BluetoothAvatar : Mascot;
+        Greeting.HeaderOpacity += o => Header.Opacity = o;
+        Greeting.IslandBounds = () =>
+        {
+            var r = _island.VisibleRect;
+            return new Rect(Shell.TranslatePoint(r.TopLeft, Greeting), r.Size);
+        };
+        Greeting.Landing += Greeting_Landing;
+        Greeting.Finished += Greeting_Finished;
         SizeChanged += (_, e) =>
         {
             if (!e.HeightChanged || e.PreviousSize.Height <= 0) return;
             if (_settings.Docked) Dock(center: _dockCentered);     // angedockt: oben bleiben
-            else Top -= e.NewSize.Height - e.PreviousSize.Height;   // sonst bleibt der untere Rand stehen
+            else if (!_anchorTop) Top -= e.NewSize.Height - e.PreviousSize.Height;   // sonst bleibt der untere Rand stehen
         };
+        MouseMove += (_, e) => ActiveMascot.LookAt(e.GetPosition(ActiveMascot));   // Augen folgen der Maus
+        MouseLeave += (_, _) => ActiveMascot.LookAhead();
         // Streckenauswahl und ERG sind so hoch wie die Übersicht (die Liste scrollt), statt das Fenster zu vergrößern.
         // Die Übersicht ist oben ausgerichtet, ihre Höhe ist also ihre echte Höhe: Das Fenster schrumpft auch wieder.
         HomeView.SizeChanged += (_, _) => RouteView.Height = ErgView.Height = HomeView.ActualHeight;
@@ -121,10 +139,11 @@ public partial class MainWindow : Window
         if (_settings.Docked && _settings.NotchDock && _settings.Left is double dockLeft) { Left = dockLeft; Dock(center: IsCentered()); }
         else if (_settings.Left is double left && _settings.Top is double top && IsOnScreen(left, top)) { Left = left; Top = top; SetDocked(false); }
         else PlaceDefault();
-        // Erst nach dem ersten gerenderten Bild aufklappen: Das erste Bild dauert beim Start spürbar (JIT, Grafik),
+        // Erst nach dem ersten gerenderten Bild starten: Das erste Bild dauert beim Start spürbar (JIT, Grafik),
         // die Animation wäre sonst schon vorbei, bevor man etwas sieht. Bis dahin bleibt das Fenster unsichtbar.
         Root.Opacity = 0;
-        ContentRendered += (_, _) => PlayOpen();
+        _greeting = true;                                                  // Meldungen und Bluetooth-Karte warten
+        ContentRendered += (_, _) => StartGreeting();
         _radio = await BluetoothRadio.WatchAsync(on => Dispatcher.BeginInvoke(() => OnBluetoothChanged(on)));
         if (_radio is { State: not Windows.Devices.Radios.RadioState.On }) OnBluetoothChanged(false);   // schon beim Start aus
         Native.SetThreadExecutionState(Native.ES_CONTINUOUS | Native.ES_SYSTEM_REQUIRED);   // Review #9
@@ -294,6 +313,7 @@ public partial class MainWindow : Window
         bool controlLost = s.Connected && _trainer?.Control is { HasControl: false };
         int zone = stale ? 0 : PowerZones.Of(s.Power3sW, _settings.FtpW);
         DetectEvents(s, controlLost);
+        if (!_greeting) SetOpaque(!s.Connected);
 
         // Kopfzeile: Verbindungspunkt und Anzahl verbundener Geräte, immer sichtbar. Ändert sich etwas, springt der Punkt kurz.
         if (SetFill(LinkDot, !s.Connected ? "MutedBrush" : stale || controlLost ? "WarningBrush" : "PositiveBrush")) Motion.PopIn(LinkDot, 0.3, 380);
@@ -303,18 +323,41 @@ public partial class MainWindow : Window
 
         UpdateBluetoothCard();
         // nach dem gewählten Tab, nicht nach der Sichtbarkeit: Beim Wechsel blendet die alte Ansicht noch kurz aus
-        if (HomeTab.IsChecked == true) RenderHome(s, stale, controlLost, zone);
+        if (_compact) RenderCompact(s, stale, controlLost, zone);
+        else if (HomeTab.IsChecked == true) RenderHome(s, stale, controlLost, zone);
         else if (ErgTab.IsChecked == true) RenderErg();
+    }
+
+    // Gesicht nach Verbindung und FTP-Zone: sucht, schläft ohne Daten, benommen bei Problemen, locker, konzentriert, am Limit
+    private Mood MoodFor(SessionSnapshot s, bool stale, bool controlLost, int zone) =>
+        !s.Connected ? (_bluetoothOff ? Mood.Dizzy : Mood.Search)
+        : stale ? Mood.Sleep
+        : controlLost ? Mood.Dizzy
+        : zone >= 5 ? Mood.Strain
+        : zone >= 3 ? Mood.Focus
+        : Mood.Idle;
+
+    private Avatar ActiveMascot => _compact ? MiniMascot : Mascot;
+
+    private static Color? ZoneColor(int zone) => zone >= 2 ? ((SolidColorBrush)ZoneBrushes[zone]).Color : null;
+
+    // Minimiert: nur Avatar, Watt, Puls und Trittfrequenz
+    private void RenderCompact(SessionSnapshot s, bool stale, bool controlLost, int zone)
+    {
+        MiniMascot.Mood = MoodFor(s, stale, controlLost, zone);
+        MiniMascot.Busy = !s.Connected && !_bluetoothOff;
+        MiniMascot.Recording = _ride.Current is not null;
+        MiniPowerRun.Text = stale ? "–" : s.Power3sW.ToString();
+        MiniHeartRun.Text = s.HeartRateBpm?.ToString() ?? "–";
+        MiniCadenceRun.Text = stale || s.CadenceRpm is null ? "–" : $"{s.CadenceRpm:0}";
+        if ((MiniMascot.Tag as int?) == zone) return;
+        MiniMascot.Tag = zone;
+        MiniMascot.Tint(ZoneColor(zone));
     }
 
     private void RenderHome(SessionSnapshot s, bool stale, bool controlLost, int zone)
     {
-        Mascot.Mood = !s.Connected ? (_message == "Bluetooth ist aus" ? Mood.Dizzy : Mood.Search)
-            : stale ? Mood.Sleep
-            : controlLost ? Mood.Dizzy
-            : zone >= 5 ? Mood.Strain
-            : zone >= 3 ? Mood.Focus
-            : Mood.Idle;
+        Mascot.Mood = MoodFor(s, stale, controlLost, zone);
         Mascot.Recording = _ride.Current is not null;
         Mascot.Busy = !s.Connected && !_bluetoothOff;                      // „…“-Abzeichen, solange er sucht
         // Bluetooth aus zeigt die große Karte, die Statuszeile bleibt dann leer
@@ -361,7 +404,7 @@ public partial class MainWindow : Window
             Motion.Run(Motion.Scale(segment), ScaleTransform.ScaleYProperty, 1.9, 1, 420, Motion.Pop);
         }
         ZoneText.Text = zone > 0 ? $"ZONE {zone}" : "–";
-        Mascot.Tint(zone >= 2 ? ((SolidColorBrush)ZoneBrushes[zone]).Color : null);
+        Mascot.Tint(ZoneColor(zone));
     }
 
     // Strecke auf der Übersicht, rechts neben den drei Hauptwerten
@@ -418,22 +461,65 @@ public partial class MainWindow : Window
         Render(_state.Current);
     }
 
-    // Die Karte bleibt stehen, bis man tippt oder Bluetooth einschaltet. Sie springt auf wie eine Meldung.
+    // „Bluetooth ist aus“ ist ein eigener Bildschirm, keine Karte darüber: Die Ansicht darunter ist weg, die Tabs sind
+    // gesperrt. Der Avatar gleitet aus der Übersicht nach links in die Karte und beim Einschalten wieder zurück.
+    // Die Karte bleibt, bis man tippt oder Bluetooth einschaltet.
     private void UpdateBluetoothCard()
     {
         bool show = _bluetoothOff && !_bluetoothCardDismissed;
-        if (show == _bluetoothCardShown) return;
-        _bluetoothCardShown = show;
-        if (show)
+        if (show == _bluetoothCardShown || _greeting) return;               // beim Start gleitet der Avatar selbst hinein
+        bool fly = !_compact && HomeTab.IsChecked == true && !Greeting.Running;
+        if (show) ShowBluetoothScreen(fly);
+        else HideBluetoothScreen(fly);
+    }
+
+    private void ShowBluetoothScreen(bool fly)
+    {
+        _bluetoothCardShown = true;
+        SetViewsLocked(true);
+        BluetoothAvatar.Mood = Mood.Dizzy;
+        BluetoothCard.Visibility = Visibility.Visible;
+        Motion.Run(BluetoothCard, OpacityProperty, 0, 1, 320, Co.OutE);
+        // Text erst, wenn der Avatar fast da ist: Beim Start kommt er aus der Mitte und würde sonst durch den Text gleiten
+        Motion.Reveal(BluetoothText.Children.Cast<UIElement>(), fly ? 300 : 420, 80, rise: true);
+        Glow(BluetoothGlow, Mood.Dizzy);
+        var view = CurrentView;
+        if (!fly) { view.Visibility = Visibility.Hidden; return; }          // beim Start: gleich der Bluetooth-Bildschirm
+        Greeting.Fly(Mascot, BluetoothAvatar, 560, () => BluetoothAvatar.Shake(60));
+        // Ansicht erst nach dem Abflug verstecken: Der Avatar startet an seinem Platz in der Übersicht
+        Motion.Run(view, OpacityProperty, view.Opacity, 0, 260, Co.OutE, done: () =>
         {
-            BluetoothAvatar.Mood = Mood.Dizzy;
-            BluetoothCard.Visibility = Visibility.Visible;
-            Motion.PopIn(BluetoothCard, 0.94);
-            Motion.PopIn(BluetoothAvatar, 0.5, 480, 0.5, 1, delayMs: 60);
-            BluetoothAvatar.Shake(320);
-            Glow(BluetoothGlow, Mood.Dizzy);
-        }
-        else Motion.PopOut(BluetoothCard, 0.96, 160, () => { if (!_bluetoothCardShown) BluetoothCard.Visibility = Visibility.Collapsed; });
+            if (!_bluetoothCardShown) return;
+            view.Visibility = Visibility.Hidden;
+            view.Opacity = 1;
+            Mascot.Opacity = 1;
+        });
+    }
+
+    private void HideBluetoothScreen(bool fly)
+    {
+        _bluetoothCardShown = false;
+        SetViewsLocked(false);
+        var view = CurrentView;
+        view.Visibility = Visibility.Visible;
+        Motion.Run(view, OpacityProperty, 0, 1, 320, Co.OutE, 120);
+        if (view == HomeView) Motion.Reveal([PowerColumn, SideColumn, RouteLoaded, .. StatsGrid.Children.Cast<UIElement>()], 160, 55);
+        if (fly) Greeting.Fly(BluetoothAvatar, Mascot, 560, () => Mascot.Greet(80));
+        Motion.Run(BluetoothCard, OpacityProperty, BluetoothCard.Opacity, 0, 300, Co.OutE, done: () =>
+        {
+            if (_bluetoothCardShown) return;
+            BluetoothCard.Visibility = Visibility.Collapsed;
+            BluetoothCard.Opacity = 1;
+            BluetoothAvatar.Opacity = 1;
+        });
+        Render(_state.Current);
+    }
+
+    // Tabs gesperrt, solange der Bluetooth-Bildschirm steht
+    private void SetViewsLocked(bool locked)
+    {
+        HomeTab.IsEnabled = RouteTab.IsEnabled = ErgTab.IsEnabled = !locked;
+        Motion.Run(TabBar, OpacityProperty, TabBar.Opacity, locked ? 0.35 : 1, 200, Co.OutE);
     }
 
     // Tippen öffnet die Bluetooth-Seite der Windows-Einstellungen
@@ -470,10 +556,12 @@ public partial class MainWindow : Window
         _wasFinished = _sim.Finished;
     }
 
+    // Minimiert gibt es keine Meldungen (die Notch geht nie von selbst auf). Während des Starts warten sie.
     private void ShowToast(Mood mood, string title, string text, double seconds = 4)
     {
+        if (_compact) return;
         _toasts.Enqueue((mood, title, text, seconds));
-        if (Toast.Visibility != Visibility.Visible) NextToast();
+        if (Toast.Visibility != Visibility.Visible && !_greeting) NextToast();
     }
 
     // Meldung springt auf, der Avatar zuerst, dann die Zeilen nacheinander (Sheet 9). Gute Nachrichten: Er winkt.
@@ -491,7 +579,7 @@ public partial class MainWindow : Window
             Motion.PopIn(ToastAvatar, 0.5, 480, 0.5, 1, delayMs: 40);
             Motion.Reveal([ToastTitle, ToastText], 120, 70, rise: true);
             Glow(ToastGlow, t.Mood);
-            if (t.Mood == Mood.Happy) ToastAvatar.Wave(380, 2);
+            if (t.Mood == Mood.Happy) ToastAvatar.Greet(300);
             else if (t.Mood == Mood.Dizzy) ToastAvatar.Shake(320);
             _toastTimer.Interval = TimeSpan.FromSeconds(t.Seconds);
             _toastTimer.Start();
@@ -540,7 +628,8 @@ public partial class MainWindow : Window
                 view.Opacity = 1;
             });
         }
-        next.Visibility = Visibility.Visible;
+        // Bluetooth-Bildschirm steht (z. B. „Strecke laden …“ aus dem Menü): Ansicht nur merken, sie kommt danach
+        next.Visibility = _bluetoothCardShown ? Visibility.Hidden : Visibility.Visible;
         Motion.Run(next, OpacityProperty, next.Opacity, 1, 120);
         if (RouteTab.IsChecked == true) RefreshRouteList();
         Render(_state.Current);
@@ -733,8 +822,8 @@ public partial class MainWindow : Window
         var surface = (Color)FindResource("SurfaceColor");
         double minOpacity = TryFindResource("MinOpacity") as double? ?? 0.2;                  // ganz durchsichtig wäre unlesbar
         surface.A = (byte)Math.Round(Math.Clamp(_settings.BackgroundOpacity, minOpacity, 1) * 255);
-        var background = Frozen(surface);
-        Shell.Background = LeftEar.Fill = RightEar.Fill = background;
+        _surface = surface;
+        ApplyBackground();
 
         double scale = Math.Clamp(_settings.Scale, 0.5, 2);
         Root.LayoutTransform = new ScaleTransform(scale, scale);
@@ -746,6 +835,32 @@ public partial class MainWindow : Window
         _sim.Physics.MassKg = _settings.RiderKg + _settings.BikeKg;
         _sim.Physics.CdA = Math.Clamp(_settings.CdA, 0.1, 1);
         Render(_state.Current);
+    }
+
+    // Hintergrund für Panel und Notch-Ohren: ganz deckend, bis ein Trainer verbunden ist, dann die eingestellte Deckkraft
+    private Color ShellColor
+    {
+        get
+        {
+            var c = _surface;
+            if (_opaque) c.A = 255;
+            return c;
+        }
+    }
+
+    private void ApplyBackground() => Shell.Background = LeftEar.Fill = RightEar.Fill = Frozen(ShellColor);
+
+    // weich überblendet, wenn sich der Verbindungszustand ändert
+    private void SetOpaque(bool opaque)
+    {
+        if (_opaque == opaque) return;
+        var from = ShellColor;
+        _opaque = opaque;
+        if (!Motion.Enabled) { ApplyBackground(); return; }
+        var brush = new SolidColorBrush(from);
+        Shell.Background = LeftEar.Fill = RightEar.Fill = brush;
+        brush.BeginAnimation(SolidColorBrush.ColorProperty, new ColorAnimation(ShellColor, TimeSpan.FromMilliseconds(600)) { EasingFunction = Co.InOutE });
+        Motion.After(650, () => { if (Shell.Background == brush) ApplyBackground(); });
     }
 
     private static SolidColorBrush Frozen(Color color)
@@ -787,6 +902,8 @@ public partial class MainWindow : Window
     // Ziehen und loslassen: nah am oberen Rand dockt das Overlay an, nah der Mitte rastet es zentriert ein.
     private void Window_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
+        if (Greeting.Running) Greeting.Skip();                             // Klick beim Start: gleich auf den Platz
+        if (_switching) return;
         var before = new Point(Left, Top);
         bool wasDocked = _settings.Docked;
         DragMove();
@@ -799,21 +916,38 @@ public partial class MainWindow : Window
         _settings.Top = Top;
     }
 
-    // Andocken wie ein Magnet: gleitet an den Rand (und in die Mitte), dann wachsen die Notch-Ohren heraus
-    // und das Panel federt kurz nach, als würde es einrasten
+    // Andocken wie ein Tropfen, der mit dem Rand verschmilzt: gleitet weich hinauf (und in die Mitte), die oberen Ecken
+    // werden flach und die Notch-Ohren fließen aus den Kanten heraus. Ohne Nachfedern.
     private void DockAnimated(bool center)
     {
         var screen = Native.MonitorBounds(this);
         double left = center ? screen.Left + (screen.Width - ActualWidth) / 2 : Left;
+        bool wasDocked = _settings.Docked;
         _settings.Left = left;
         _settings.Top = screen.Top;
-        if (center) Motion.Run(this, LeftProperty, Left, left, 200);
-        Motion.Run(this, TopProperty, Top, screen.Top, 200, done: () =>
+        if (center) Motion.Run(this, LeftProperty, Left, left, 260, Co.InOutE);
+        Motion.Run(this, TopProperty, Top, screen.Top, 260, Co.InOutE, done: () =>
         {
             Dock(center);
-            Motion.Bounce(Shell, 0.97, 420, 0.5, 0);
-            Motion.PopIn(LeftEar, 0, 340, 1, 0);
-            Motion.PopIn(RightEar, 0, 340, 0, 0);
+            if (!wasDocked) Merge();
+        });
+    }
+
+    private void Merge()
+    {
+        var r = (CornerRadius)FindResource("ShellRadius");
+        LeftEar.RenderTransformOrigin = new Point(1, 0);                   // wachsen aus der Ecke am Panel
+        RightEar.RenderTransformOrigin = new Point(0, 0);
+        var shell = Motion.Scale(Shell);
+        Shell.RenderTransformOrigin = new Point(0.5, 0);
+        Tween.Run(420, Co.InOut, k =>
+        {
+            double top = r.TopLeft * (1 - k);
+            Shell.CornerRadius = new CornerRadius(top, top, r.BottomRight, r.BottomLeft);
+            double ear = Co.Out(k);
+            Motion.Scale(LeftEar).ScaleX = Motion.Scale(LeftEar).ScaleY = ear;
+            Motion.Scale(RightEar).ScaleX = Motion.Scale(RightEar).ScaleY = ear;
+            shell.ScaleY = 1 + 0.025 * Math.Sin(Math.PI * k);                // zieht sich kurz zum Rand hin
         });
     }
 
@@ -836,6 +970,7 @@ public partial class MainWindow : Window
     private void SetDocked(bool docked)
     {
         _settings.Docked = docked;
+        _island.Docked = docked;
         var r = (CornerRadius)FindResource("ShellRadius");
         Shell.CornerRadius = docked ? new CornerRadius(0, 0, r.BottomRight, r.BottomLeft) : r;
         Shell.BorderThickness = docked ? new Thickness(0) : new Thickness(1);
@@ -930,83 +1065,138 @@ public partial class MainWindow : Window
 
     // ---------- Avatar: Maus darüber und Antippen ----------
 
-    private void Mascot_MouseEnter(object sender, MouseEventArgs e) => Mascot.Hover(true);
+    private void Mascot_MouseEnter(object sender, MouseEventArgs e) => ((Avatar)sender).Hover(true);
 
-    private void Mascot_MouseLeave(object sender, MouseEventArgs e) => Mascot.Hover(false);
+    private void Mascot_MouseLeave(object sender, MouseEventArgs e) => ((Avatar)sender).Hover(false);
 
-    // Antippen: Er staucht sich und federt. Fünf Stupser in kurzer Zeit sind zu viel (Sheet 9 und 10):
-    // Er verschwindet, meldet sich schwindelig und ist nach drei Sekunden wieder da.
+    // Klaps wie in Coucou: Er staucht sich, federt und kneift die Augen zusammen. Drei Klapse in 1,7 s sind zu viel:
+    // Er dreht sich schwindelig, die Meldung erscheint, nach gut drei Sekunden ist er wieder da und freut sich.
     private void Mascot_Poke(object sender, MouseButtonEventArgs e)
     {
         e.Handled = true;                                                   // sonst startet das Verschieben
+        var avatar = (Avatar)sender;
         long now = Environment.TickCount64;
-        _pokes.RemoveAll(t => now - t > 2500);
+        _pokes.RemoveAll(t => now - t > 1700);
         _pokes.Add(now);
-        if (_pokes.Count < 5) { Mascot.Poke(); return; }
+        avatar.Slap();
+        if (_pokes.Count < 3) return;
         _pokes.Clear();
+        if (_compact)                                                       // minimiert: keine Meldung, nur schwindelig
+        {
+            avatar.Flash(Mood.Dizzy, 3300);
+            avatar.Roll();
+            Motion.After(3300, () => avatar.Flash(Mood.Happy, 1200));
+            return;
+        }
         Motion.PopOut(Mascot, 0.3, 180);
-        ShowToast(Mood.Dizzy, "Zu viele Stupser auf einmal.", "Gib mir eine Sekunde – in drei Sekunden geht's weiter.", 3);
-        Motion.After(3300, () => Motion.PopIn(Mascot, 0.4, 480, 0.5, 1));
+        bool showsNow = Toast.Visibility != Visibility.Visible;
+        ShowToast(Mood.Dizzy, "Zu viele Stupser auf einmal.", "Gib mir eine Sekunde – in drei Sekunden geht's weiter.", 3.3);
+        if (showsNow) ToastAvatar.Roll();
+        Motion.After(3400, () => { Motion.PopIn(Mascot, 0.4, 480, 0.5, 1); Mascot.Flash(Mood.Happy, 1200); });
     }
 
-    // ---------- Aufklappen und Zuklappen ----------
+    // ---------- Start, Minimieren, Beenden ----------
 
-    // Aufklappen wie in Sheet 1: Aus der Notch wächst das Panel etwas über seine Größe hinaus und schnappt zurück.
-    // Der Avatar ist zuerst da, Funken sammeln sich um ihn, dann erscheinen Kopfzeile und Inhalt nacheinander.
-    // Zum Schluss freut er sich und winkt.
-    private void PlayOpen()
+    // Start wie in Sheet 1 und 2 (Ablauf aus Coucou): Die kleine Notch geht mit Feder auf, in voller Deckkraft.
+    // GreetingView zeichnet Karte, Partikel und den Avatar; am Ende gleitet er auf seinen Platz.
+    private void StartGreeting()
     {
         Root.Opacity = 1;
         UpdateLayout();
-        Sparkle(140);                                                       // misst vor dem Skalieren
-        var shell = Motion.Scale(Shell);
-        Shell.RenderTransformOrigin = new Point(0.5, _settings.Docked ? 0 : 0.5);
-        Motion.Run(shell, ScaleTransform.ScaleXProperty, 0.3, 1, 540, Motion.Expand);
-        Motion.Run(shell, ScaleTransform.ScaleYProperty, 0.22, 1, 580, Motion.Expand);
-        Motion.Run(Shell, OpacityProperty, 0, 1, 140);
-        Motion.PopIn(LeftEar, 0, 320, 1, 0, delayMs: 420);
-        Motion.PopIn(RightEar, 0, 320, 0, 0, delayMs: 420);
-        Motion.Run(Header, OpacityProperty, 0, 1, 260, delayMs: 240);
-        Motion.Reveal([HomeTab, RouteTab, ErgTab], 260, 45);
-        Motion.PopIn(Mascot, 0.5, 520, 0.5, 1, delayMs: 60);
-        Motion.Reveal([PowerColumn, SideColumn, RouteLoaded, .. StatsGrid.Children.Cast<UIElement>()], 400, 60);
-        Mascot.Greet(520);
+        if (!Motion.Enabled) { Greeting_Finished(); return; }
+        Views.Opacity = 0;
+        Header.Opacity = 0;
+        Mascot.Opacity = 0;
+        ApplyBackground();                                                  // ohne Trainer in voller Deckkraft
+        _island.Docked = _settings.Docked;
+        _island.Jump(CompactW, CompactH, CompactR);
+        _island.Open();
+        Greeting.Prepare();                                                 // erst angeordnet, dann messen
+        var area = ViewsArea.TranslatePoint(new Point(0, 0), Greeting);
+        Greeting.Start(new Rect(area, new Size(ViewsArea.ActualWidth, ViewsArea.ActualHeight)), CompactW, CompactH);
     }
 
-    // Zuklappen wie in Sheet 3: Inhalt blendet aus, der Avatar schließt die Augen, das Panel holt kurz Schwung
-    // und zieht sich in die Notch zurück
+    // Der Avatar gleitet auf seinen Platz: in die Übersicht oder nach links in die Bluetooth-Karte.
+    // Der Inhalt erscheint dabei nacheinander.
+    private void Greeting_Landing(Avatar target)
+    {
+        target.Opacity = 0;
+        Header.Opacity = 1;
+        Motion.Run(Views, OpacityProperty, 0, 1, 260, Co.OutE);
+        if (target == BluetoothAvatar) ShowBluetoothScreen(fly: false);
+        else Motion.Reveal([PowerColumn, SideColumn, RouteLoaded, .. StatsGrid.Children.Cast<UIElement>()], 140, 60);
+    }
+
+    private void Greeting_Finished()
+    {
+        _greeting = false;
+        Views.Opacity = Header.Opacity = 1;
+        Mascot.Opacity = BluetoothAvatar.Opacity = 1;                       // beide wieder sichtbar, egal wo er gelandet ist
+        if (_bluetoothCardShown) BluetoothAvatar.Shake(80);
+        Render(_state.Current);                                             // Bluetooth kann sich inzwischen geändert haben
+        if (_toasts.Count > 0 && Toast.Visibility != Visibility.Visible) NextToast();
+    }
+
+    // Minimieren nur per Knopf (Sheet 3, obere Reihe): Inhalt blendet aus, die Insel zieht sich mit der Schließkurve
+    // zur kleinen Notch zusammen, darin erscheinen Avatar und die drei Werte. Nie von selbst.
+    private void Minimize_Click(object sender, RoutedEventArgs e)
+    {
+        if (_compact || _switching || _greeting) return;
+        _switching = _anchorTop = true;
+        Motion.Run(Expanded, OpacityProperty, 1, 0, 110, Co.OutE);         // erst ausblenden, dann zusammenziehen,
+        Motion.After(100, () => _island.Close(CompactW, CompactH, CompactR, () =>   // sonst schneidet die Kante den Inhalt
+        {
+            _compact = true;
+            _toasts.Clear();
+            Toast.Visibility = Visibility.Collapsed;
+            Expanded.Visibility = Visibility.Collapsed;
+            Expanded.Opacity = 1;
+            CompactBar.Visibility = Visibility.Visible;
+            Shell.Width = CompactW;
+            Shell.Padding = new Thickness(8, 0, 4, 0);
+            UpdateLayout();
+            _island.Reset();
+            Render(_state.Current);
+            Motion.PopIn(MiniMascot, 0.4, 420, 0.5, 0.6);
+            Motion.Reveal([.. CompactValues.Children.Cast<UIElement>(), ExpandButton], 60, 35);
+            _switching = false;
+        }));
+    }
+
+    // Aufklappen: Die kleine Notch geht mit Feder (wie beim Start) wieder auf, der Inhalt erscheint nacheinander
+    private void Expand_Click(object sender, RoutedEventArgs e)
+    {
+        if (!_compact || _switching) return;
+        _switching = true;
+        Motion.Run(CompactBar, OpacityProperty, 1, 0, 100, Co.OutE, done: () =>
+        {
+            _compact = false;
+            CompactBar.Visibility = Visibility.Collapsed;
+            CompactBar.Opacity = 1;
+            Shell.Width = 720;
+            Shell.Padding = new Thickness(10, 8, 10, 10);
+            Expanded.Visibility = Visibility.Visible;
+            Header.Opacity = Views.Opacity = 0;
+            UpdateLayout();
+            _island.Jump(CompactW, CompactH, CompactR);
+            _island.Open(() => { _switching = false; _anchorTop = false; });
+            Render(_state.Current);
+            // Inhalt erst, wenn die Insel fast offen ist: sonst schneidet ihre Kante die Karten
+            Motion.Run(Header, OpacityProperty, 0, 1, 220, Co.OutE, 240);
+            Motion.Run(Views, OpacityProperty, 0, 1, 220, Co.OutE, 260);
+            Motion.Reveal(_bluetoothCardShown ? [BluetoothCard] : RevealParts(CurrentView), 280, 55);
+        });
+    }
+
+    // Beenden: Inhalt blendet aus, der Avatar schließt die Augen, die Insel zieht sich zur kleinen Notch zusammen
+    // und dann ganz in den oberen Rand zurück
     private void PlayClose(Action done)
     {
-        Mascot.Flash(Mood.Content, 2000);
-        foreach (UIElement part in new UIElement[] { Header, PowerColumn, SideColumn, RouteLoaded, StatsGrid, RouteView, ErgView, Toast, BluetoothCard })
-            Motion.Run(part, OpacityProperty, part.Opacity, 0, 140);
-        Motion.PopOut(LeftEar, 0, 140);
-        Motion.PopOut(RightEar, 0, 140);
-        var shell = Motion.Scale(Shell);
-        Shell.RenderTransformOrigin = new Point(0.5, _settings.Docked ? 0 : 0.5);
-        Motion.Run(shell, ScaleTransform.ScaleXProperty, shell.ScaleX, 0.3, 380, Motion.Anticipate, 120);
-        Motion.Run(shell, ScaleTransform.ScaleYProperty, shell.ScaleY, 0.22, 380, Motion.Anticipate, 120);
-        Motion.Run(Shell, OpacityProperty, 1, 0, 160, Motion.In, 360, done);
-    }
-
-    // Funken wie in Sheet 1: verstreut über das Panel, sie ziehen sich zu einem Kranz um den Avatar zusammen und vergehen
-    private void Sparkle(int delayMs)
-    {
-        if (!Motion.Enabled || Fx.ActualWidth <= 0) return;
-        var center = Mascot.TranslatePoint(new Point(Mascot.ActualWidth / 2, Mascot.ActualHeight / 2), Fx);
-        for (int i = 0; i < 26; i++)
-        {
-            double size = 1.5 + Rng.NextDouble() * 1.8;
-            var dot = new System.Windows.Shapes.Ellipse { Width = size, Height = size, Opacity = 0 };
-            dot.SetResourceReference(System.Windows.Shapes.Shape.FillProperty, "TextBrush");
-            var shift = Motion.Shift(dot);
-            Fx.Children.Add(dot);
-            double angle = Rng.NextDouble() * 2 * Math.PI, radius = 40 + Rng.NextDouble() * 16;
-            int start = delayMs + Rng.Next(140);
-            Motion.Run(shift, TranslateTransform.XProperty, Rng.NextDouble() * Fx.ActualWidth, center.X + Math.Cos(angle) * radius * 1.3, 760, Motion.Out, start);
-            Motion.Run(shift, TranslateTransform.YProperty, Rng.NextDouble() * Fx.ActualHeight, center.Y + Math.Sin(angle) * radius * 0.85, 760, Motion.Out, start);
-            Motion.Keys(dot, OpacityProperty, start, [(0, 0), (160, 0.9), (620, 0.75), (980, 0)], done: () => Fx.Children.Remove(dot));
-        }
+        ActiveMascot.Flash(Mood.Content, 3000);
+        Motion.Run(_compact ? CompactBar : Expanded, OpacityProperty, 1, 0, 140, Co.OutE);
+        void Retract() => _island.Close(NotchW, 0, CompactR, done, 300);
+        if (_compact) Retract();
+        else _island.Close(CompactW, CompactH, CompactR, () => Motion.After(90, Retract));
     }
 
     protected override void OnClosing(CancelEventArgs e)
