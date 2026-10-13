@@ -44,8 +44,10 @@ public partial class MainWindow : Window
     private readonly AppSettings _settings = AppSettings.Load();
     private readonly LibraryStore _library = new(AppSettings.Folder);
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromMilliseconds(250) };   // ein Takt für alles
-    private readonly DispatcherTimer _toastTimer = new();
-    private readonly Queue<(Mood Mood, string Title, string Text, double Seconds)> _toasts = new();
+    private readonly DispatcherTimer _noticeTimer = new();
+    private (NoticeKind Kind, string Text, double Seconds)? _pendingNotice;     // Hinweis, der auf das Ende des Starts wartet
+    private long _deviceSeen;                                                    // zuletzt ein Gerät verbunden (Trainer oder Pulsgurt)
+    private bool _asleep = true;
     private readonly ModeGuard _guard;
     private readonly RouteSim _sim = new(new RiderPhysics());
     private readonly GradeLimiter _limiter = new();
@@ -79,7 +81,7 @@ public partial class MainWindow : Window
         _ergCounter.Display = v => ErgRun.Text = $"{v:0}";
         _guard = new ModeGuard(command => _trainer?.Control?.SetTarget(command));
         _timer.Tick += (_, _) => OnTick();
-        _toastTimer.Tick += (_, _) => NextToast();
+        _noticeTimer.Tick += (_, _) => { _noticeTimer.Stop(); Motion.Run(NoticeBar, OpacityProperty, NoticeBar.Opacity, 0, 350, Co.InOutE); };
         _island = new Island(Shell, LeftEar, RightEar);
         Greeting.ChooseTarget = () => _bluetoothOff ? BluetoothAvatar : Mascot;
         Greeting.HeaderOpacity += o => Header.Opacity = o;
@@ -108,7 +110,7 @@ public partial class MainWindow : Window
 
     // Trainer und Pulsgurt zählen je einmal, die Steuerung läuft über den Trainer
     public int ConnectedDevices =>
-        (_trainer is not null && _state.Current.Connected ? 1 : 0) + (_strap is not null && _state.Current.StrapConnected ? 1 : 0);
+        ((_trainer is not null || Demo) && _state.Current.Connected ? 1 : 0) + (_strap is not null && _state.Current.StrapConnected ? 1 : 0);
 
     public bool IsConnected(SavedDevice d) => d.Kind == "Trainer"
         ? _trainer is not null && _state.Current.Connected && _settings.TrainerAddress == d.Address
@@ -144,15 +146,19 @@ public partial class MainWindow : Window
         Root.Opacity = 0;
         _greeting = true;                                                  // Meldungen und Bluetooth-Karte warten
         ContentRendered += (_, _) => StartGreeting();
-        _radio = await BluetoothRadio.WatchAsync(on => Dispatcher.BeginInvoke(() => OnBluetoothChanged(on)));
-        if (_radio is { State: not Windows.Devices.Radios.RadioState.On }) OnBluetoothChanged(false);   // schon beim Start aus
+        if (!Demo)
+        {
+            _radio = await BluetoothRadio.WatchAsync(on => Dispatcher.BeginInvoke(() => OnBluetoothChanged(on)));
+            if (_radio is { State: not Windows.Devices.Radios.RadioState.On }) OnBluetoothChanged(false);   // schon beim Start aus
+        }
         Native.SetThreadExecutionState(Native.ES_CONTINUOUS | Native.ES_SYSTEM_REQUIRED);   // Review #9
         Native.KeepTopmost(this);                                           // Review #7
         RideRecorder.RecoverUnexported(RidesFolder);
         Render(_state.Current);
         _lastTick = Stopwatch.GetTimestamp();
         _timer.Start();
-        _ = KeepTrainerConnectedAsync();
+        if (Demo) StartDemo();                                             // simulierter Trainer statt Bluetooth
+        else _ = KeepTrainerConnectedAsync();
     }
 
     // ---------- Verbindungen ----------
@@ -293,7 +299,7 @@ public partial class MainWindow : Window
             DistanceM = _sim.DistanceM,
             GradePercent = _sim.GradePercent,
         });
-        Record(_state.Current, stale);
+        if (!Demo) Record(_state.Current, stale);                         // Demo-Fahrten werden nicht gespeichert
 
         _ticks++;
         if (_ticks % 2 == 0) Render(_state.Current);
@@ -314,6 +320,9 @@ public partial class MainWindow : Window
         int zone = stale ? 0 : PowerZones.Of(s.Power3sW, _settings.FtpW);
         DetectEvents(s, controlLost);
         if (!_greeting) SetOpaque(!s.Connected);
+        // schläft, solange kein Gerät verbunden ist; erst nach 5 s ohne Gerät, damit kurze Aussetzer ihn nicht wecken und hinlegen
+        if (s.Connected || s.StrapConnected) _deviceSeen = Environment.TickCount64;
+        _asleep = _deviceSeen == 0 || Environment.TickCount64 - _deviceSeen > 5000;
 
         // Kopfzeile: Verbindungspunkt und Anzahl verbundener Geräte, immer sichtbar. Ändert sich etwas, springt der Punkt kurz.
         if (SetFill(LinkDot, !s.Connected ? "MutedBrush" : stale || controlLost ? "WarningBrush" : "PositiveBrush")) Motion.PopIn(LinkDot, 0.3, 380);
@@ -328,14 +337,22 @@ public partial class MainWindow : Window
         else if (ErgTab.IsChecked == true) RenderErg();
     }
 
-    // Gesicht nach Verbindung und FTP-Zone: sucht, schläft ohne Daten, benommen bei Problemen, locker, konzentriert, am Limit
+    // Gesicht: schläft ohne Gerät (grau), sonst nach FTP-Zone locker, konzentriert oder am Limit (Farbe der Zone).
+    // Verbunden, aber gerade keine Daten (nicht getreten): normales Gesicht.
     private Mood MoodFor(SessionSnapshot s, bool stale, bool controlLost, int zone) =>
-        !s.Connected ? (_bluetoothOff ? Mood.Dizzy : Mood.Search)
-        : stale ? Mood.Sleep
-        : controlLost ? Mood.Dizzy
+        _asleep ? Mood.Sleep
+        : !s.Connected || stale ? Mood.Idle
         : zone >= 5 ? Mood.Strain
         : zone >= 3 ? Mood.Focus
         : Mood.Idle;
+
+    // Abzeichen: „…“, solange er schläft und sucht (Bluetooth an), „!“, wenn eine andere App die Steuerung hat
+    private void SetBadges(Avatar avatar, bool controlLost)
+    {
+        avatar.Busy = _asleep && !_bluetoothOff;
+        avatar.Warning = controlLost;
+        avatar.Recording = Recording;
+    }
 
     private Avatar ActiveMascot => _compact ? MiniMascot : Mascot;
 
@@ -345,8 +362,7 @@ public partial class MainWindow : Window
     private void RenderCompact(SessionSnapshot s, bool stale, bool controlLost, int zone)
     {
         MiniMascot.Mood = MoodFor(s, stale, controlLost, zone);
-        MiniMascot.Busy = !s.Connected && !_bluetoothOff;
-        MiniMascot.Recording = _ride.Current is not null;
+        SetBadges(MiniMascot, controlLost);
         MiniPowerRun.Text = stale ? "–" : s.Power3sW.ToString();
         MiniHeartRun.Text = s.HeartRateBpm?.ToString() ?? "–";
         MiniCadenceRun.Text = stale || s.CadenceRpm is null ? "–" : $"{s.CadenceRpm:0}";
@@ -358,15 +374,14 @@ public partial class MainWindow : Window
     private void RenderHome(SessionSnapshot s, bool stale, bool controlLost, int zone)
     {
         Mascot.Mood = MoodFor(s, stale, controlLost, zone);
-        Mascot.Recording = _ride.Current is not null;
-        Mascot.Busy = !s.Connected && !_bluetoothOff;                      // „…“-Abzeichen, solange er sucht
+        SetBadges(Mascot, controlLost);
         // Bluetooth aus zeigt die große Karte, die Statuszeile bleibt dann leer
         StatusLine.Visibility = _bluetoothOff && !s.Connected ? Visibility.Hidden : Visibility.Visible;
         SubtitleText.Text = !s.Connected ? _message
             : stale ? "keine Daten"
             : controlLost ? "Steuerung verloren"
             : _sim.Finished ? "Ziel erreicht"
-            : _trainer?.Name ?? "Trainer";
+            : TrainerName;
         if (SetFill(StatusDot, !s.Connected ? "MutedBrush" : stale || controlLost ? "WarningBrush" : "PositiveBrush")) Motion.PopIn(StatusDot, 0.3, 380);
 
         // die drei wichtigsten Werte, immer sichtbar; „–“, wenn der Trainer sie nicht liefert (D100: keine Trittfrequenz).
@@ -403,7 +418,6 @@ public partial class MainWindow : Window
             segment.RenderTransformOrigin = new Point(0.5, 0.5);
             Motion.Run(Motion.Scale(segment), ScaleTransform.ScaleYProperty, 1.9, 1, 420, Motion.Pop);
         }
-        ZoneText.Text = zone > 0 ? $"ZONE {zone}" : "–";
         Mascot.Tint(ZoneColor(zone));
     }
 
@@ -457,7 +471,7 @@ public partial class MainWindow : Window
         _message = on ? "Suche Trainer …" : "Bluetooth ist aus";
         if (!on) { _bluetoothCardDismissed = false; Render(_state.Current); return; }
         _wake.TrySetResult();                                              // Trainersuche wartet nicht die 10 s ab
-        if (!_strapLoop) _ = KeepStrapConnectedAsync();
+        if (!_strapLoop && !Demo) _ = KeepStrapConnectedAsync();
         Render(_state.Current);
     }
 
@@ -477,15 +491,15 @@ public partial class MainWindow : Window
     {
         _bluetoothCardShown = true;
         SetViewsLocked(true);
-        BluetoothAvatar.Mood = Mood.Dizzy;
+        BluetoothAvatar.Mood = Mood.Sleep;                                  // ohne Bluetooth schläft er (grau)
         BluetoothCard.Visibility = Visibility.Visible;
         Motion.Run(BluetoothCard, OpacityProperty, 0, 1, 320, Co.OutE);
         // Text erst, wenn der Avatar fast da ist: Beim Start kommt er aus der Mitte und würde sonst durch den Text gleiten
         Motion.Reveal(BluetoothText.Children.Cast<UIElement>(), fly ? 300 : 420, 80, rise: true);
-        Glow(BluetoothGlow, Mood.Dizzy);
+        Glow(BluetoothGlow);
         var view = CurrentView;
         if (!fly) { view.Visibility = Visibility.Hidden; return; }          // beim Start: gleich der Bluetooth-Bildschirm
-        Greeting.Fly(Mascot, BluetoothAvatar, 560, () => BluetoothAvatar.Shake(60));
+        Greeting.Fly(Mascot, BluetoothAvatar, 560);
         // Ansicht erst nach dem Abflug verstecken: Der Avatar startet an seinem Platz in der Übersicht
         Motion.Run(view, OpacityProperty, view.Opacity, 0, 260, Co.OutE, done: () =>
         {
@@ -504,7 +518,7 @@ public partial class MainWindow : Window
         view.Visibility = Visibility.Visible;
         Motion.Run(view, OpacityProperty, 0, 1, 320, Co.OutE, 120);
         if (view == HomeView) Motion.Reveal([PowerColumn, SideColumn, RouteLoaded, .. StatsGrid.Children.Cast<UIElement>()], 160, 55);
-        if (fly) Greeting.Fly(BluetoothAvatar, Mascot, 560, () => Mascot.Greet(80));
+        if (fly) Greeting.Fly(BluetoothAvatar, Mascot, 560);
         Motion.Run(BluetoothCard, OpacityProperty, BluetoothCard.Opacity, 0, 300, Co.OutE, done: () =>
         {
             if (_bluetoothCardShown) return;
@@ -534,81 +548,60 @@ public partial class MainWindow : Window
 
     // ---------- Meldungen ----------
 
+    // Statt Meldungen über dem Inhalt: Jedes neu verbundene Gerät zeigt den grünen Haken am Avatar.
+    // Was kein Symbol zeigen kann (Verbindung mitten in der Fahrt weg, Steuerung verloren), steht kurz in der Kopfzeile.
     private void DetectEvents(SessionSnapshot s, bool controlLost)
     {
         if (s.Connected != _wasConnected)
         {
-            if (s.Connected) Mascot.Done();                                 // Abzeichen wird grün (Sheet 6)
-            if (s.Connected) ShowToast(Mood.Happy, $"{_trainer?.Name ?? "Trainer"} verbunden",
-                _everConnected ? "Wieder da. Ziel und Steuerung sind zurück." : "Los geht's, ich halte die Verbindung.");
-            else if (_everConnected && !_closing) ShowToast(Mood.Dizzy, "Verbindung weg", "Ich warte, bis der Trainer wieder da ist.", 6);
+            if (s.Connected) CheckMark();
+            else if (_everConnected && !_closing) Notice(NoticeKind.Warning, "Verbindung zum Trainer weg – ich warte, bis er wieder da ist", 8);
             _everConnected |= s.Connected;
             _wasConnected = s.Connected;
         }
         bool hasControl = s.Connected && _trainer?.Control is { HasControl: true };
-        if (controlLost && _hadControl) { _controlLost = true; ShowToast(Mood.Dizzy, "Steuerung verloren", "Eine andere App greift auf den Trainer zu. Ich hole sie zurück.", 6); }
-        if (hasControl && _controlLost) { _controlLost = false; ShowToast(Mood.Happy, "Steuerung zurück", "Der Trainer hört wieder auf mich."); }
+        if (controlLost && _hadControl) { _controlLost = true; Notice(NoticeKind.Warning, "Steuerung verloren: Eine andere App greift auf den Trainer zu", 8); }
+        if (hasControl && _controlLost) { _controlLost = false; CheckMark(); }
         _hadControl = hasControl;
-        if (s.StrapConnected && !_strapWas) ShowToast(Mood.Happy, "Pulsgurt verbunden", "Der Puls kommt jetzt vom Gurt.");
+        if (s.StrapConnected && !_strapWas) CheckMark();
         _strapWas = s.StrapConnected;
-        if (_sim.Finished && !_wasFinished && _sim.Route is { } r)
-            ShowToast(Mood.Happy, "Ziel erreicht!", $"{r.Name} · {r.LengthM / 1000:0.0} km geschafft.", 8);
+        if (_sim.Finished && !_wasFinished && _sim.Route is not null) { CheckMark(); Mascot.Greet(200); }
         _wasFinished = _sim.Finished;
     }
 
-    // Minimiert gibt es keine Meldungen (die Notch geht nie von selbst auf). Während des Starts warten sie.
-    private void ShowToast(Mood mood, string title, string text, double seconds = 4)
+    // grüner Haken an beiden Avataren (Übersicht und minimiert), je nachdem, welcher gerade zu sehen ist
+    private void CheckMark()
     {
-        if (_compact) return;
-        _toasts.Enqueue((mood, title, text, seconds));
-        if (Toast.Visibility != Visibility.Visible && !_greeting) NextToast();
+        Mascot.Done();
+        MiniMascot.Done();
     }
 
-    // Meldung springt auf, der Avatar zuerst, dann die Zeilen nacheinander (Sheet 9). Gute Nachrichten: Er winkt.
-    // Probleme: Er schüttelt sich, darunter pulsiert ein roter Schein (Sheet 10). Am Ende schrumpft sie weg.
-    private void NextToast()
+    private enum NoticeKind { Info, Success, Warning, Error }
+
+    // Kurzer Hinweis mittig in der Kopfzeile: verdeckt nichts und verschwindet von selbst. Während des Starts wartet er.
+    private void Notice(NoticeKind kind, string text, double seconds = 5)
     {
-        _toastTimer.Stop();
-        if (_toasts.TryDequeue(out var t))
+        if (_greeting) { _pendingNotice = (kind, text, seconds); return; }
+        NoticeDot.SetResourceReference(System.Windows.Shapes.Shape.FillProperty, kind switch
         {
-            ToastAvatar.Mood = t.Mood;
-            ToastTitle.Text = t.Title;
-            ToastText.Text = t.Text;
-            Toast.Visibility = Visibility.Visible;
-            Motion.PopIn(Toast, 0.94);
-            Motion.PopIn(ToastAvatar, 0.5, 480, 0.5, 1, delayMs: 40);
-            Motion.Reveal([ToastTitle, ToastText], 120, 70, rise: true);
-            Glow(ToastGlow, t.Mood);
-            if (t.Mood == Mood.Happy) ToastAvatar.Greet(300);
-            else if (t.Mood == Mood.Dizzy) ToastAvatar.Shake(320);
-            _toastTimer.Interval = TimeSpan.FromSeconds(t.Seconds);
-            _toastTimer.Start();
-            return;
-        }
-        if (Toast.Visibility != Visibility.Visible) return;
-        Motion.PopOut(Toast, 0.96, 160, () =>
-        {
-            Toast.Visibility = Visibility.Collapsed;
-            if (_toasts.Count > 0) NextToast();                            // kam während des Ausblendens dazu
+            NoticeKind.Success => "PositiveBrush",
+            NoticeKind.Warning => "WarningBrush",
+            NoticeKind.Error => "NegativeBrush",
+            _ => "AccentBrush",
         });
+        NoticeText.Text = text;
+        Motion.Rise(NoticeBar, 6, 380);
+        _noticeTimer.Stop();
+        _noticeTimer.Interval = TimeSpan.FromSeconds(seconds);
+        _noticeTimer.Start();
     }
 
-    // Schein am unteren Rand: rot pulsierend bei Problemen, sonst ruhig in Grün oder Akzentfarbe
-    private static void Glow(System.Windows.Shapes.Shape glow, Mood mood)
+    // Schein am unteren Rand der Bluetooth-Karte
+    private static void Glow(System.Windows.Shapes.Shape glow)
     {
-        glow.SetResourceReference(System.Windows.Shapes.Shape.FillProperty,
-            mood == Mood.Dizzy ? "NegativeBrush" : mood == Mood.Happy ? "PositiveBrush" : "AccentBrush");
-        if (mood == Mood.Dizzy)
-            Motion.Keys(glow, OpacityProperty, 0, [(0, 0), (350, 0.9), (800, 0.45), (1250, 0.9), (1700, 0.45), (2150, 0.9), (2700, 0.6)]);
-        else Motion.Run(glow, OpacityProperty, 0, 0.5, 500);
+        glow.SetResourceReference(System.Windows.Shapes.Shape.FillProperty, "NegativeBrush");
+        Motion.Run(glow, OpacityProperty, 0, 0.5, 600);
     }
-
-    private void Toast_Click(object sender, MouseButtonEventArgs e)
-    {
-        e.Handled = true;                                                   // sonst startet das Verschieben
-        NextToast();
-    }
-
     // ---------- Ansichten ----------
 
     // Hidden statt Collapsed: Die verborgenen Ansichten behalten ihren Platz, so springt die Fenstergröße nicht.
@@ -684,10 +677,10 @@ public partial class MainWindow : Window
     {
         try
         {
-            if (_ride.Export() is { } file) ShowToast(Mood.Happy, "Fahrt gespeichert", Path.GetFileName(file) + " liegt in Dokumente\\Domestique.", 6);
-            else ShowToast(Mood.Sleep, "Noch keine Fahrt", "Die Aufzeichnung startet mit dem ersten Tritt.");
+            if (_ride.Export() is { } file) Notice(NoticeKind.Success, $"Fahrt gespeichert: Dokumente\\Domestique\\{Path.GetFileName(file)}", 8);
+            else Notice(NoticeKind.Info, "Noch keine Fahrt – die Aufzeichnung startet mit dem ersten Tritt");
         }
-        catch (Exception ex) { ShowToast(Mood.Dizzy, "Export fehlgeschlagen", ex.Message, 8); }
+        catch (Exception ex) { Notice(NoticeKind.Error, "Export fehlgeschlagen: " + ex.Message, 10); }
     }
 
     // ---------- Strecken und Karte (Phase 5, 6, 9) ----------
@@ -753,7 +746,7 @@ public partial class MainWindow : Window
             RefreshRouteList(select: imported);
             RouteList.ScrollIntoView(RouteList.SelectedItem);
         }
-        catch (Exception ex) { ShowToast(Mood.Dizzy, "Datei nicht lesbar", ex.Message, 8); }
+        catch (Exception ex) { Notice(NoticeKind.Error, "Datei nicht lesbar: " + ex.Message, 10); }
     }
 
     private void ConfirmRoute_Click(object sender, RoutedEventArgs e)
@@ -767,7 +760,7 @@ public partial class MainWindow : Window
     public void LoadFile(string path)
     {
         try { ShowRoute(GpxLoader.Load(File.ReadAllText(path), Path.GetFileNameWithoutExtension(path)), path); }
-        catch (Exception ex) { ShowToast(Mood.Dizzy, "Strecke nicht lesbar", ex.Message, 8); }
+        catch (Exception ex) { Notice(NoticeKind.Error, "Strecke nicht lesbar: " + ex.Message, 10); }
     }
 
     // Die Strecke erscheint auf der Übersicht
@@ -781,19 +774,17 @@ public partial class MainWindow : Window
         HomeTab.IsChecked = true;
         Render(_state.Current);
         MoveDots();
-        ShowToast(Mood.Happy, "Strecke geladen", $"{route.Name} · {route.LengthM / 1000:0.0} km");
+        PlayRouteLoaded();
         RawLog.Note($"Strecke geladen: {route.Name}, {route.LengthM / 1000:0.0} km");
     }
 
     private void UnloadRoute()
     {
-        bool had = _sim.Route is not null;
         _sim.Unload();
         _activeRoute = null;
         _mapProject = _profileProject = null;
         HomeTab.IsChecked = true;
         Render(_state.Current);
-        if (had) ShowToast(Mood.Idle, "Keine Strecke", "Freie Fahrt: Es geht flach weiter, der Trainer wird wieder leicht.");
     }
 
     private void MoveDots()
@@ -1050,7 +1041,7 @@ public partial class MainWindow : Window
         _clickThrough = on;
         Native.SetClickThrough(this, on);
         ClickThroughButton.IsChecked = on;
-        if (on) ShowToast(Mood.Idle, "Durchklicken an", "Klicks gehen jetzt ans Video. Strg+Alt+D schaltet zurück.");
+        if (on) Notice(NoticeKind.Info, "Durchklicken an: Klicks gehen ans Video. Strg+Alt+D schaltet zurück", 8);
     }
 
     private void ClickThrough_Click(object sender, RoutedEventArgs e) => SetClickThrough(ClickThroughButton.IsChecked == true);
@@ -1070,7 +1061,7 @@ public partial class MainWindow : Window
     private void Mascot_MouseLeave(object sender, MouseEventArgs e) => ((Avatar)sender).Hover(false);
 
     // Klaps wie in Coucou: Er staucht sich, federt und kneift die Augen zusammen. Drei Klapse in 1,7 s sind zu viel:
-    // Er dreht sich schwindelig, die Meldung erscheint, nach gut drei Sekunden ist er wieder da und freut sich.
+    // Er dreht sich schwindelig, ganz ohne eigenen Bildschirm, und ist danach wieder der Alte.
     private void Mascot_Poke(object sender, MouseButtonEventArgs e)
     {
         e.Handled = true;                                                   // sonst startet das Verschieben
@@ -1081,20 +1072,48 @@ public partial class MainWindow : Window
         avatar.Slap();
         if (_pokes.Count < 3) return;
         _pokes.Clear();
-        if (_compact)                                                       // minimiert: keine Meldung, nur schwindelig
-        {
-            avatar.Flash(Mood.Dizzy, 3300);
-            avatar.Roll();
-            Motion.After(3300, () => avatar.Flash(Mood.Happy, 1200));
-            return;
-        }
-        Motion.PopOut(Mascot, 0.3, 180);
-        bool showsNow = Toast.Visibility != Visibility.Visible;
-        ShowToast(Mood.Dizzy, "Zu viele Stupser auf einmal.", "Gib mir eine Sekunde – in drei Sekunden geht's weiter.", 3.3);
-        if (showsNow) ToastAvatar.Roll();
-        Motion.After(3400, () => { Motion.PopIn(Mascot, 0.4, 480, 0.5, 1); Mascot.Flash(Mood.Happy, 1200); });
+        avatar.Dizzy();
     }
 
+    // ---------- Strecke geladen ----------
+
+    // Der Avatar fährt kurz über das Höhenprofil der neuen Strecke, danach erscheint die Strecke und der grüne Haken.
+    // Minimiert, auf dem Bluetooth-Bildschirm oder ohne Animationseffekte gibt es nur den Haken.
+    private void PlayRouteLoaded()
+    {
+        if (_compact || _bluetoothCardShown || _greeting || !Motion.Enabled || Ride.Running) { CheckMark(); return; }
+        var heights = ProfileHeights();
+        RouteLoaded.Opacity = 0;                                            // Strecke erscheint erst nach der Fahrt
+        Motion.After(480, () =>                                             // erst die Übersicht aufbauen lassen
+        {
+            if (HomeTab.IsChecked != true || _compact) { RouteLoaded.Opacity = 1; CheckMark(); return; }
+            UpdateLayout();
+            var area = new Rect(ViewsArea.TranslatePoint(new Point(0, 0), Ride), new Size(ViewsArea.ActualWidth, ViewsArea.ActualHeight));
+            Motion.Run(HomeView, OpacityProperty, HomeView.Opacity, 0.12, 250, Co.OutE);
+            void Brighten()
+            {
+                Ride.Returning -= Brighten;
+                Motion.Run(HomeView, OpacityProperty, HomeView.Opacity, 1, 420, Co.InOutE);
+            }
+            Ride.Returning += Brighten;
+            Ride.Start(Mascot, area, heights, () =>
+            {
+                Motion.Reveal([RouteLoaded], 0);
+                CheckMark();
+            });
+        });
+    }
+
+    // Höhenprofil der geladenen Strecke als Werte 0 … 1 (aus der gezeichneten Profillinie)
+    private double[] ProfileHeights()
+    {
+        var points = ProfileLine.Points;
+        if (points is null || points.Count < 2) return [0, 0];
+        int step = Math.Max(1, points.Count / 60);
+        var ys = Enumerable.Range(0, points.Count / step).Select(i => points[i * step].Y).ToArray();
+        double min = ys.Min(), max = ys.Max(), range = Math.Max(1, max - min);
+        return ys.Select(y => (max - y) / range).ToArray();
+    }
     // ---------- Start, Minimieren, Beenden ----------
 
     // Start wie in Sheet 1 und 2 (Ablauf aus Coucou): Die kleine Notch geht mit Feder auf, in voller Deckkraft.
@@ -1132,9 +1151,8 @@ public partial class MainWindow : Window
         _greeting = false;
         Views.Opacity = Header.Opacity = 1;
         Mascot.Opacity = BluetoothAvatar.Opacity = 1;                       // beide wieder sichtbar, egal wo er gelandet ist
-        if (_bluetoothCardShown) BluetoothAvatar.Shake(80);
         Render(_state.Current);                                             // Bluetooth kann sich inzwischen geändert haben
-        if (_toasts.Count > 0 && Toast.Visibility != Visibility.Visible) NextToast();
+        if (_pendingNotice is { } n) { _pendingNotice = null; Notice(n.Kind, n.Text, n.Seconds); }
     }
 
     // Minimieren nur per Knopf (Sheet 3, obere Reihe): Inhalt blendet aus, die Insel zieht sich mit der Schließkurve
@@ -1147,8 +1165,6 @@ public partial class MainWindow : Window
         Motion.After(100, () => _island.Close(CompactW, CompactH, CompactR, () =>   // sonst schneidet die Kante den Inhalt
         {
             _compact = true;
-            _toasts.Clear();
-            Toast.Visibility = Visibility.Collapsed;
             Expanded.Visibility = Visibility.Collapsed;
             Expanded.Opacity = 1;
             CompactBar.Visibility = Visibility.Visible;

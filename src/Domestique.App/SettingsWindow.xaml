@@ -1,4 +1,4 @@
-<!-- Einstellungen als Popover im Stil des macOS-Vorbilds: Icon-Reiter, Karten mit Symbol, Titel, Text und Schalter.
+﻿<!-- Einstellungen als Popover im Stil des macOS-Vorbilds: Icon-Reiter, Karten mit Symbol, Titel, Text und Schalter.
      Jede Änderung wirkt sofort, es gibt kein „Übernehmen“. -->
 <Window x:Class="Domestique.App.SettingsWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -15,7 +15,8 @@
             <!-- Kopf: Avatar, Titel, Schließen. Zum Verschieben hier ziehen. -->
             <Grid DockPanel.Dock="Top" Background="Transparent" MouseLeftButtonDown="Header_MouseLeftButtonDown" Margin="0,0,0,10">
                 <StackPanel Orientation="Horizontal">
-                    <local:Avatar x:Name="HeaderAvatar" Width="40" Height="32" Margin="0,0,10,0"/>
+                    <local:Avatar x:Name="HeaderAvatar" Width="50" Height="40" Margin="0,0,8,0" IsHitTestVisible="True"
+                                  MouseEnter="Avatar_MouseEnter" MouseLeave="Avatar_MouseLeave" MouseLeftButtonDown="Avatar_Slap"/>
                     <StackPanel VerticalAlignment="Center">
                         <TextBlock Text="Domestique" FontSize="14" FontWeight="Bold"/>
                         <TextBlock Text="Einstellungen" FontSize="11" Foreground="{DynamicResource SubtleBrush}"/>
