@@ -1,4 +1,4 @@
-using System.ComponentModel;
+﻿using System.ComponentModel;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
@@ -53,6 +53,9 @@ public partial class SettingsWindow : Window
         RefreshLibrary();
         RefreshMyDevices();
         HeaderAvatar.Mood = Mood.Idle;
+        HeaderAvatar.Gear = true;                                             // graues Abzeichen mit Zahnrad
+        MouseMove += (_, e) => HeaderAvatar.LookAt(e.GetPosition(HeaderAvatar));   // Augen folgen der Maus
+        MouseLeave += (_, _) => HeaderAvatar.LookAhead();
         _loading = false;
         Popover.Opacity = 0;                                                  // unsichtbar bis zum ersten Bild, dann aufspringen
         ContentRendered += (_, _) => PlayOpen();
@@ -290,6 +293,26 @@ public partial class SettingsWindow : Window
         try { _library.Delete(item.FilePath); }
         catch (Exception ex) { MessageBox.Show(this, ex.Message, "Löschen fehlgeschlagen"); }
         RefreshLibrary();
+    }
+
+    // ---------- Avatar im Kopf: dieselben Reaktionen wie im Overlay ----------
+
+    private readonly List<long> _slaps = new();
+
+    private void Avatar_MouseEnter(object sender, MouseEventArgs e) => HeaderAvatar.Hover(true);
+
+    private void Avatar_MouseLeave(object sender, MouseEventArgs e) => HeaderAvatar.Hover(false);
+
+    private void Avatar_Slap(object sender, MouseButtonEventArgs e)
+    {
+        e.Handled = true;                                                     // sonst startet das Verschieben
+        long now = Environment.TickCount64;
+        _slaps.RemoveAll(t => now - t > 1700);
+        _slaps.Add(now);
+        HeaderAvatar.Slap();
+        if (_slaps.Count < 3) return;
+        _slaps.Clear();
+        HeaderAvatar.Dizzy();
     }
 
     // ---------- Fenster ----------

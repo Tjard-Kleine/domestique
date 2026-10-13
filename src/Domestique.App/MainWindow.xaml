@@ -56,6 +56,12 @@
                             <RadioButton x:Name="ErgTab" Style="{StaticResource NavTab}" Content="&#xE945;" ToolTip="ERG-Steuerung" Checked="Tab_Checked"/>
                         </StackPanel>
                     </Grid>
+                    <!-- kurze Hinweise statt Meldungen über dem Inhalt: Punkt in der Farbe der Art, Text, verschwindet von selbst -->
+                    <StackPanel x:Name="NoticeBar" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="400"
+                                Opacity="0" IsHitTestVisible="False">
+                        <Ellipse x:Name="NoticeDot" Width="6" Height="6" Margin="0,1,7,0" VerticalAlignment="Center" Fill="{DynamicResource AccentBrush}"/>
+                        <TextBlock x:Name="NoticeText" FontSize="11.5" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                    </StackPanel>
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                         <!-- Zustand und Anzahl verbundener Bluetooth-Geräte, Klick öffnet die Bluetooth-Einstellungen -->
                         <Button x:Name="LinkButton" Style="{StaticResource LinkPill}" Click="LinkButton_Click">
@@ -84,7 +90,7 @@
                     <!-- ===== Übersicht: links wie das Zwift-HUD Avatar, Watt, Puls und Trittfrequenz; rechts Strecke und weitere Werte ===== -->
                     <Grid x:Name="HomeView" VerticalAlignment="Top">
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="330"/>
+                            <ColumnDefinition Width="344"/>
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
 
@@ -97,10 +103,11 @@
                                 </Grid.ColumnDefinitions>
 
                                 <!-- Avatar, darunter die Leistungszone nach FTP. Reagiert auf Maus und Antippen. -->
-                                <StackPanel Width="80" Margin="0,0,10,0" VerticalAlignment="Center">
-                                    <local:Avatar x:Name="Mascot" Width="80" Height="65" IsHitTestVisible="True"
+                                <StackPanel Width="96" Margin="0,0,8,0" VerticalAlignment="Center">
+                                    <!-- gleiche Größe wie beim Start (Körper 58 px), damit er nahtlos hierher gleitet -->
+                                    <local:Avatar x:Name="Mascot" Width="96" Height="81" IsHitTestVisible="True"
                                                   MouseEnter="Mascot_MouseEnter" MouseLeave="Mascot_MouseLeave" MouseLeftButtonDown="Mascot_Poke"/>
-                                    <UniformGrid x:Name="ZoneBar" Columns="6" Height="6" Margin="5,8,5,0">
+                                    <UniformGrid x:Name="ZoneBar" Columns="6" Height="6" Margin="12,6,12,0">
                                         <Border CornerRadius="2" Margin="0,0,1.5,0"/>
                                         <Border CornerRadius="2" Margin="0,0,1.5,0"/>
                                         <Border CornerRadius="2" Margin="0,0,1.5,0"/>
@@ -108,7 +115,6 @@
                                         <Border CornerRadius="2" Margin="0,0,1.5,0"/>
                                         <Border CornerRadius="2"/>
                                     </UniformGrid>
-                                    <TextBlock x:Name="ZoneText" Text="–" Style="{StaticResource Caption}" HorizontalAlignment="Center" Margin="0,4,0,0"/>
                                 </StackPanel>
 
                                 <!-- Zustand und Watt, groß, die Einheit klein mit Symbol daneben -->
@@ -315,8 +321,8 @@
                         <Grid ClipToBounds="True">
                             <Ellipse x:Name="BluetoothGlow" Width="360" Height="110" VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="0,0,0,-62"
                                      Opacity="0" IsHitTestVisible="False" OpacityMask="{StaticResource GlowMask}" Fill="{DynamicResource NegativeBrush}"/>
-                            <DockPanel Margin="16,12" VerticalAlignment="Center">
-                                <local:Avatar x:Name="BluetoothAvatar" Width="72" Height="58" Margin="0,0,16,0"/>
+                            <DockPanel Margin="12,12,16,12" VerticalAlignment="Center">
+                                <local:Avatar x:Name="BluetoothAvatar" Width="96" Height="81" Margin="0,0,12,0"/>
                                 <StackPanel x:Name="BluetoothText" VerticalAlignment="Center">
                                     <TextBlock Text="Bluetooth ist aus" FontSize="15" FontWeight="Bold"/>
                                     <TextBlock Text="Hier tippen, um Bluetooth in Windows einzuschalten. Danach verbinde ich mich von selbst."
@@ -326,21 +332,7 @@
                         </Grid>
                     </Border>
 
-                    <!-- ===== Meldung: liegt über der aktuellen Ansicht, verschwindet von selbst ===== -->
-                    <Border x:Name="Toast" Visibility="Collapsed" CornerRadius="{DynamicResource CardRadius}" Background="{DynamicResource ToastBrush}"
-                            BorderBrush="{DynamicResource StrokeBrush}" BorderThickness="1" MouseLeftButtonDown="Toast_Click" Cursor="Hand">
-                        <Grid ClipToBounds="True">
-                            <Ellipse x:Name="ToastGlow" Width="360" Height="110" VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="0,0,0,-62"
-                                     Opacity="0" IsHitTestVisible="False" OpacityMask="{StaticResource GlowMask}" Fill="{DynamicResource AccentBrush}"/>
-                            <DockPanel Margin="16,12" VerticalAlignment="Center">
-                                <local:Avatar x:Name="ToastAvatar" Width="72" Height="58" Margin="0,0,16,0"/>
-                                <StackPanel VerticalAlignment="Center">
-                                    <TextBlock x:Name="ToastTitle" FontSize="15" FontWeight="Bold" TextWrapping="Wrap"/>
-                                    <TextBlock x:Name="ToastText" Style="{StaticResource CardText}" FontSize="12" Margin="0,3,0,0"/>
-                                </StackPanel>
-                            </DockPanel>
-                        </Grid>
-                    </Border>
+
                 </Grid>
                 </Grid>
             </StackPanel>
@@ -366,6 +358,8 @@
 
             <!-- Start wie in Sheet 1 und 2: zeichnet Karte, Partikel und den Avatar, solange der Start läuft -->
             <local:GreetingView x:Name="Greeting" Margin="-10,-8,-10,-10" Visibility="Collapsed"/>
+            <!-- Strecke laden: der Avatar fährt kurz über das Höhenprofil der neuen Strecke -->
+            <local:RideView x:Name="Ride" Margin="-10,-8,-10,-10" Visibility="Collapsed"/>
             </Grid>
         </Border>
       </Grid>

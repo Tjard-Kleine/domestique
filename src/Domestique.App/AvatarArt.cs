@@ -6,7 +6,8 @@ namespace Domestique.App;
 
 public enum Mood { Idle, Search, Sleep, Happy, Dizzy, Focus, Strain, Content, Squint, Love }
 
-internal enum BadgeKind { None, Busy, Done }
+// Busy: sucht („…“), Done: verbunden oder geladen (grüner Haken), Warning: Steuerung verloren (!), Settings: Zahnrad
+internal enum BadgeKind { None, Busy, Done, Warning, Settings }
 
 // Alles, was ein Bild des Avatars ausmacht. Längen in Vielfachen der halben Körperhöhe (hh).
 internal sealed class AvatarPose
@@ -61,6 +62,8 @@ internal static class AvatarArt
     private static readonly Brush BusyBrush = Frozen(new SolidColorBrush(Color.FromRgb(0x3B, 0xA0, 0xF5)));
     private static readonly Brush BusyDots = Frozen(new SolidColorBrush(Color.FromRgb(0x0B, 0x1B, 0x3A)));
     private static readonly Brush DoneBrush = Frozen(new SolidColorBrush(Color.FromRgb(0x34, 0xD3, 0x99)));
+    private static readonly Brush WarningBrush = Frozen(new SolidColorBrush(Color.FromRgb(0xF5, 0xA5, 0x24)));
+    private static readonly Brush GearBrush = Frozen(new SolidColorBrush(Color.FromRgb(0x8A, 0x90, 0x9C)));
     private static readonly Brush RecBrush = Frozen(new SolidColorBrush(Color.FromRgb(0xF4, 0x50, 0x5E)));
     private static readonly Brush ZBrush = Frozen(new SolidColorBrush(Color.FromArgb(0xC0, 0xB8, 0xC0, 0xD0)));
 
@@ -210,25 +213,37 @@ internal static class AvatarArt
 
     private static void DrawBadge(DrawingContext dc, AvatarPose p, double hw, double hh)
     {
-        double r = hh * 0.3 * p.Badge;
+        double r = hh * (p.BadgeKind == BadgeKind.Settings ? 0.4 : 0.3) * p.Badge;   // Zahnrad etwas größer, sonst nicht erkennbar
         var o = new Point(-hw * 0.78, -hh * 0.74);
         dc.DrawEllipse(Ring, null, o, r + hh * 0.08 * p.Badge, r + hh * 0.08 * p.Badge);
-        if (p.BadgeKind == BadgeKind.Busy)
+        var white = new Pen(Brushes.White, r * 0.26) { StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round, LineJoin = PenLineJoin.Round };
+        switch (p.BadgeKind)
         {
-            dc.DrawEllipse(BusyBrush, null, o, r, r);
-            for (int i = -1; i <= 1; i++) dc.DrawEllipse(BusyDots, null, new Point(o.X + i * r * 0.5, o.Y), r * 0.17, r * 0.17);
-        }
-        else
-        {
-            dc.DrawEllipse(DoneBrush, null, o, r, r);
-            var g = new StreamGeometry();
-            using (var c = g.Open())
-            {
-                c.BeginFigure(new Point(o.X - r * 0.45, o.Y + r * 0.02), false, false);
-                c.LineTo(new Point(o.X - r * 0.12, o.Y + r * 0.34), true, true);
-                c.LineTo(new Point(o.X + r * 0.46, o.Y - r * 0.3), true, true);
-            }
-            dc.DrawGeometry(null, new Pen(Brushes.White, r * 0.26) { StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round, LineJoin = PenLineJoin.Round }, g);
+            case BadgeKind.Busy:
+                dc.DrawEllipse(BusyBrush, null, o, r, r);
+                for (int i = -1; i <= 1; i++) dc.DrawEllipse(BusyDots, null, new Point(o.X + i * r * 0.5, o.Y), r * 0.17, r * 0.17);
+                break;
+            case BadgeKind.Warning:                                        // !
+                dc.DrawEllipse(WarningBrush, null, o, r, r);
+                dc.DrawLine(white, new Point(o.X, o.Y - r * 0.45), new Point(o.X, o.Y + r * 0.08));
+                dc.DrawEllipse(Brushes.White, null, new Point(o.X, o.Y + r * 0.42), r * 0.13, r * 0.13);
+                break;
+            case BadgeKind.Settings:                                       // Zahnrad
+                dc.DrawEllipse(GearBrush, null, o, r, r);
+                dc.DrawGeometry(Brushes.White, null, Gear(o, r * 0.62, r * 0.46, 8));
+                dc.DrawEllipse(GearBrush, null, o, r * 0.2, r * 0.2);
+                break;
+            default:                                                       // grüner Haken
+                dc.DrawEllipse(DoneBrush, null, o, r, r);
+                var g = new StreamGeometry();
+                using (var c = g.Open())
+                {
+                    c.BeginFigure(new Point(o.X - r * 0.45, o.Y + r * 0.02), false, false);
+                    c.LineTo(new Point(o.X - r * 0.12, o.Y + r * 0.34), true, true);
+                    c.LineTo(new Point(o.X + r * 0.46, o.Y - r * 0.3), true, true);
+                }
+                dc.DrawGeometry(null, white, g);
+                break;
         }
     }
 
@@ -245,6 +260,24 @@ internal static class AvatarArt
             dc.DrawGeometry(HeartBrush, null, Heart(new Point(x, y), hh * (0.16 + 0.06 * Math.Sin(Math.PI * k))));
             dc.Pop();
         }
+    }
+
+    // Zahnrad mit „teeth“ Zähnen: außen Zahnköpfe, innen der Kranz
+    private static StreamGeometry Gear(Point o, double outer, double inner, int teeth)
+    {
+        var g = new StreamGeometry();
+        using (var c = g.Open())
+        {
+            int n = teeth * 4;
+            for (int i = 0; i < n; i++)
+            {
+                double a = i * 2 * Math.PI / n, r = (i % 4) is 0 or 1 ? outer : inner;
+                var pt = new Point(o.X + Math.Cos(a) * r, o.Y + Math.Sin(a) * r);
+                if (i == 0) c.BeginFigure(pt, true, true); else c.LineTo(pt, true, true);
+            }
+        }
+        g.Freeze();
+        return g;
     }
 
     private static StreamGeometry Curve(Point o, double x0, double y0, double cx, double cy, double x1, double y1)

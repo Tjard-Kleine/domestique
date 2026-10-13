@@ -64,7 +64,10 @@ public sealed class Avatar : FrameworkElement
     private Mood _mood = Mood.Search;
     private Mood? _flash;
     private BadgeKind _badgeShown;
-    private bool _hover, _busy, _done, _recording;
+    private bool _hover, _busy, _done, _recording, _warning, _gear;
+    private Color? _zoneColor;
+    private double _tintTarget;
+    private static readonly Color SleepGray = Color.FromRgb(150, 156, 168);   // wie das Blau beim Start, nur grau
     private double _lastLove = -10, _lookX, _lookY, _lookTau = 0.05;
     private FrameLoop? _lookLoop;
 
@@ -84,7 +87,16 @@ public sealed class Avatar : FrameworkElement
     public Mood Mood
     {
         get => _mood;
-        set { if (_mood != value) { _mood = value; InvalidateVisual(); } }
+        set
+        {
+            if (_mood == value) return;
+            bool woke = _mood == Mood.Sleep && value != Mood.Sleep;
+            bool sleeps = value == Mood.Sleep && _mood != Mood.Sleep;
+            _mood = value;
+            InvalidateVisual();
+            if (woke || sleeps) UpdateTint();
+            if (woke && IsLoaded) WakeUp();
+        }
     }
 
     public Mood Face => _flash ?? _mood;
@@ -109,7 +121,19 @@ public sealed class Avatar : FrameworkElement
         set { if (_busy != value) { _busy = value; UpdateBadge(); } }
     }
 
-    // Geschafft: Abzeichen wird grün mit Haken und verschwindet nach ein paar Sekunden
+    // Steuerung verloren: gelbes „!“
+    public bool Warning
+    {
+        set { if (_warning != value) { _warning = value; UpdateBadge(); } }
+    }
+
+    // Einstellungen: graues Abzeichen mit Zahnrad, dauerhaft
+    public bool Gear
+    {
+        set { if (_gear != value) { _gear = value; UpdateBadge(); } }
+    }
+
+    // Verbunden oder geladen: Abzeichen wird grün mit Haken und verschwindet nach ein paar Sekunden
     public void Done()
     {
         _done = true;
@@ -129,16 +153,41 @@ public sealed class Avatar : FrameworkElement
         _flashEnd.Start();
     }
 
-    // Farbe der Leistungszone steigt von unten auf, null = ganz weiß
+    // Farbe der Leistungszone steigt von unten auf, null = ganz weiß. Schläft er, ist sie grau.
     public void Tint(Color? color)
     {
+        _zoneColor = color;
+        UpdateTint();
+    }
+
+    private void UpdateTint()
+    {
+        Color? color = _mood == Mood.Sleep ? SleepGray : _zoneColor;
         if (color is { } c)
         {
-            if (Motion.Enabled) BeginAnimation(TintColorProperty, new ColorAnimation(c, TimeSpan.FromMilliseconds(350)) { EasingFunction = Co.InOutE });
+            if (Motion.Enabled) BeginAnimation(TintColorProperty, new ColorAnimation(c, TimeSpan.FromMilliseconds(450)) { EasingFunction = Co.InOutE });
             else { BeginAnimation(TintColorProperty, null); TintColor = c; }
         }
+        // mit dem letzten Ziel vergleichen, nicht mit dem Wert: Der kann mitten in einer anderen Überblendung gerade gleich sein
         double target = color is null ? 0 : 0.6;
-        if (Math.Abs(TintAmount - target) > 0.01) Motion.Run(this, TintAmountProperty, TintAmount, target, 350, Co.InOutE);
+        if (Math.Abs(_tintTarget - target) < 0.01) return;
+        _tintTarget = target;
+        Motion.Run(this, TintAmountProperty, TintAmount, target, 450, Co.InOutE);
+    }
+
+    // Aufwachen: streckt sich kurz nach oben, blinzelt
+    private void WakeUp()
+    {
+        Motion.Keys(this, SyProperty, 0, [(0, Sy), (160, 1.12), (320, 0.94), (520, 1)], Co.BackE);
+        Motion.Keys(this, SxProperty, 0, [(0, Sx), (160, 0.92), (320, 1.05), (520, 1)], Co.BackE);
+        Motion.After(380, Blink);
+    }
+
+    // Zu viele Klapse: dreht sich schwindelig, ohne eigenen Bildschirm
+    public void Dizzy()
+    {
+        Flash(Mood.Dizzy, 2200);
+        Roll();
     }
 
     // ---------- Bewegungen ----------
@@ -289,7 +338,7 @@ public sealed class Avatar : FrameworkElement
     // Abzeichen wie in Coucou setBadge: kurz weg (90 ms), dann mit Nachfedern das neue (280 ms)
     private void UpdateBadge()
     {
-        var kind = _done ? BadgeKind.Done : _busy ? BadgeKind.Busy : BadgeKind.None;
+        var kind = _done ? BadgeKind.Done : _warning ? BadgeKind.Warning : _busy ? BadgeKind.Busy : _gear ? BadgeKind.Settings : BadgeKind.None;
         if (kind == _badgeShown) return;
         Motion.Run(this, BadgeProperty, Badge, 0, 90, Co.InOutE, done: () =>
         {
