@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Text;
 
 namespace Domestique.Core.Routes;
@@ -14,19 +14,19 @@ public static class BuiltInRoutes
     private static readonly Course[] Courses =
     [
         // flach mit leichten Wellen, unter 2 %
-        new("Flachland-Runde", 20,
+        new("Flatland Loop", 20,
             t => (Math.Cos(2 * Math.PI * t) + 0.18 * Math.Sin(6 * Math.PI * t), 0.6 * Math.Sin(2 * Math.PI * t)),
             d => 50 + 6 * Math.Sin(2 * Math.PI * d / 5000) + 3 * Math.Sin(2 * Math.PI * d / 1700)),
         // drei Anstiege mit 4 bis 6 %
-        new("Hügelland", 32,
+        new("Rolling Hills", 32,
             t => (Math.Cos(2 * Math.PI * t) + 0.25 * Math.Cos(6 * Math.PI * t), Math.Sin(2 * Math.PI * t) + 0.2 * Math.Sin(4 * Math.PI * t)),
             d => 200 + Hill(d, 6000, 90, 1500) + Hill(d, 15000, 130, 1900) + Hill(d, 25000, 70, 1100)),
         // Bergankunft in Serpentinen, im Mittel 7 %
-        new("Bergankunft", 14,
+        new("Summit Finish", 14,
             t => (0.6 * Math.Sin(2 * Math.PI * 7 * t), 4 * t),
             d => 600 + 980 * d / 14000 + 8 * Math.Sin(2 * Math.PI * d / 2000)),
         // fast flaches Oval zum Durchziehen
-        new("Zeitfahr-Oval", 30,
+        new("Time Trial Oval", 30,
             t => (Math.Cos(2 * Math.PI * t), 0.45 * Math.Sin(2 * Math.PI * t)),
             d => 30 + 2 * Math.Sin(2 * Math.PI * d / 7500)),
     ];
@@ -63,7 +63,7 @@ public static class BuiltInRoutes
     }
 
     private static Course Find(string name) =>
-        Array.Find(Courses, c => c.Name == name) ?? throw new ArgumentException($"Unbekannte Strecke: {name}", nameof(name));
+        Array.Find(Courses, c => c.Name == name) ?? throw new ArgumentException($"Unknown route: {name}", nameof(name));
 
     private static double Hill(double d, double at, double height, double width) => height * Math.Exp(-Math.Pow((d - at) / width, 2));
 

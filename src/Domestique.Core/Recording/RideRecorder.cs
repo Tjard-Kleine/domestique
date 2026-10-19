@@ -1,4 +1,4 @@
-namespace Domestique.Core.Recording;
+﻿namespace Domestique.Core.Recording;
 
 // Eine Fahrt: startet mit dem ersten Tritt, schreibt genau einen Messpunkt pro Sekunde und erzeugt beim Export
 // die TCX-Datei. Die Zeit kommt als monotone Zeitspanne (Stopwatch) herein, damit Uhrzeitsprünge nichts verschieben.
@@ -24,7 +24,7 @@ public sealed class RideRecorder(string folder, Action<string>? log = null)
             _startDistanceM = distanceM;
             _lastSecond = -1;
             Current = new Recorder(Path.Combine(folder, $"{utcNow.ToLocalTime():yyyy-MM-dd_HH-mm-ss}.csv"));
-            Log("Aufzeichnung gestartet: " + Current.CsvPath);
+            Log("Recording started: " + Current.CsvPath);
         }
         int second = (int)(now - _startAt).TotalSeconds;
         if (second <= _lastSecond) return;
@@ -41,7 +41,7 @@ public sealed class RideRecorder(string folder, Action<string>? log = null)
         recorder.Dispose();
         string tcx = Path.ChangeExtension(recorder.CsvPath, ".tcx");
         TcxWriter.Write(tcx, recorder.Samples);
-        Log("Fahrt exportiert: " + tcx);
+        Log("Ride exported: " + tcx);
         return tcx;
     }
 
@@ -60,11 +60,11 @@ public sealed class RideRecorder(string folder, Action<string>? log = null)
                 if (samples.Count < 2) continue;
                 TcxWriter.Write(tcx, samples);
                 recovered.Add(tcx);
-                (log ?? RawLog.Note)("Fahrt nach Absturz gerettet: " + tcx);
+                (log ?? RawLog.Note)("Ride recovered after crash: " + tcx);
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or FormatException)
             {
-                (log ?? RawLog.Note)($"Rettung von {csv} fehlgeschlagen: {ex.Message}");
+                (log ?? RawLog.Note)($"Recovering {csv} failed: {ex.Message}");
             }
         }
         return recovered;

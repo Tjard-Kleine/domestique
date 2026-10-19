@@ -1,4 +1,4 @@
-using Domestique.Core.Routes;
+﻿using Domestique.Core.Routes;
 
 namespace Domestique.Core.Library;
 
@@ -19,8 +19,8 @@ public sealed class LibraryStore
     public string Import(string sourcePath)
     {
         if (!Path.GetExtension(sourcePath).Equals(".gpx", StringComparison.OrdinalIgnoreCase))
-            throw new FormatException("Nur .gpx-Strecken werden unterstützt.");
-        GpxLoader.Load(File.ReadAllText(sourcePath), "Prüfung");                 // wirft bei kaputter Datei
+            throw new FormatException("Only .gpx routes are supported.");
+        GpxLoader.Load(File.ReadAllText(sourcePath), "Check");                 // wirft bei kaputter Datei
         string target = Path.Combine(RoutesDir, Path.GetFileName(sourcePath));
         if (!string.Equals(Path.GetFullPath(sourcePath), Path.GetFullPath(target), StringComparison.OrdinalIgnoreCase))
             File.Copy(sourcePath, target, overwrite: true);
@@ -30,7 +30,7 @@ public sealed class LibraryStore
     public void Delete(string path)
     {
         if (!string.Equals(Path.GetDirectoryName(Path.GetFullPath(path)), Path.GetFullPath(RoutesDir), StringComparison.OrdinalIgnoreCase))
-            throw new InvalidOperationException("Nur Dateien aus der Bibliothek lassen sich löschen.");
+            throw new InvalidOperationException("Only library files can be deleted.");
         File.Delete(path);
     }
 }

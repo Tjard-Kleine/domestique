@@ -1,4 +1,4 @@
-using Windows.Devices.Bluetooth;
+﻿using Windows.Devices.Bluetooth;
 using Windows.Devices.Bluetooth.Advertisement;
 
 namespace Domestique.Ble;
@@ -34,13 +34,13 @@ public static class BleScan
         watcher.Stopped += (_, e) =>                                      // z. B. Bluetooth ausgeschaltet
         {
             if (e.Error != BluetoothError.Success)
-                done.TrySetException(new InvalidOperationException($"Bluetooth-Suche abgebrochen ({e.Error}). Ist Bluetooth an?"));
+                done.TrySetException(new InvalidOperationException($"Bluetooth scan stopped ({e.Error}). Is Bluetooth on?"));
         };
         watcher.Start();
         try { await Task.WhenAny(done.Task, Task.Delay(duration)); }
         finally { watcher.Stop(); }
         if (done.Task.IsFaulted) throw done.Task.Exception!.InnerException!;
         lock (found)
-            return found.Select(kv => (kv.Key, kv.Value.Length == 0 ? "Unbenannt" : kv.Value)).ToList();
+            return found.Select(kv => (kv.Key, kv.Value.Length == 0 ? "Unnamed" : kv.Value)).ToList();
     }
 }

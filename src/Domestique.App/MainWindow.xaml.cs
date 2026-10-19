@@ -47,7 +47,7 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer _noticeTimer = new();
     private (NoticeKind Kind, string Text, double Seconds)? _pendingNotice;     // Hinweis, der auf das Ende des Starts wartet
     private long _deviceSeen;                                                    // zuletzt ein Gerät verbunden (Trainer oder Pulsgurt)
-    private bool _asleep = true;
+    private bool _asleep = true, _wasRecording;
     private readonly ModeGuard _guard;
     private readonly RouteSim _sim = new(new RiderPhysics());
     private readonly GradeLimiter _limiter = new();
@@ -64,7 +64,7 @@ public partial class MainWindow : Window
     private Func<RoutePoint, Point>? _mapProject, _profileProject;
     private bool _clickThrough, _closing, _trainerLoop, _strapLoop, _connectingTrainer, _connectingStrap;
     private bool _wasConnected, _everConnected, _hadControl, _controlLost, _strapWas, _wasFinished, _dockCentered;
-    private string _message = "Suche Trainer …";
+    private string _message = "Searching for trainer …";
     private string? _lastTrainerError, _lastStrapError;
     private bool _bluetoothOff, _bluetoothCardDismissed, _bluetoothCardShown, _exiting;
     private Windows.Devices.Radios.Radio? _radio;                  // gehalten, sonst endet die Meldung beim Ein- und Ausschalten
@@ -78,6 +78,8 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        HeartIcon.Data = MiniHeartIcon.Data = Icons.HeartPulse;
+        CadenceIcon.Data = MiniCadenceIcon.Data = Icons.Crank;
         _ergCounter.Display = v => ErgRun.Text = $"{v:0}";
         _guard = new ModeGuard(command => _trainer?.Control?.SetTarget(command));
         _timer.Tick += (_, _) => OnTick();
@@ -105,7 +107,7 @@ public partial class MainWindow : Window
         HomeView.SizeChanged += (_, _) => RouteView.Height = ErgView.Height = HomeView.ActualHeight;
     }
 
-    public string TrainerStatus => _trainer is { } t && _state.Current.Connected ? $"{t.Name} · verbunden" : _message;
+    public string TrainerStatus => _trainer is { } t && _state.Current.Connected ? $"{t.Name} · connected" : _message;
     public bool BluetoothOff => _bluetoothOff;                     // dieselbe Erkennung wie unter „Domestique“ im Overlay
 
     // Trainer und Pulsgurt zählen je einmal, die Steuerung läuft über den Trainer
@@ -131,12 +133,12 @@ public partial class MainWindow : Window
     private static void RegisterHotkey(IntPtr hwnd, int id, uint key)
     {
         if (!Native.RegisterHotKey(hwnd, id, Native.MOD_CONTROL | Native.MOD_ALT, key))
-            RawLog.Note($"Tastenkürzel Strg+Alt+0x{key:X2} ist von einem anderen Programm belegt");
+            RawLog.Note($"Hotkey Ctrl+Alt+0x{key:X2} is used by another app");
     }
 
     private async void Window_Loaded(object sender, RoutedEventArgs e)
     {
-        RawLog.Note($"Domestique gestartet {DateTime.Now:yyyy-MM-dd}");
+        RawLog.Note($"Domestique started {DateTime.Now:yyyy-MM-dd}");
         ApplySettings();                                                   // Stil und Größe vor dem Positionieren
         if (_settings.Docked && _settings.NotchDock && _settings.Left is double dockLeft) { Left = dockLeft; Dock(center: IsCentered()); }
         else if (_settings.Left is double left && _settings.Top is double top && IsOnScreen(left, top)) { Left = left; Top = top; SetDocked(false); }
@@ -153,7 +155,7 @@ public partial class MainWindow : Window
         }
         Native.SetThreadExecutionState(Native.ES_CONTINUOUS | Native.ES_SYSTEM_REQUIRED);   // Review #9
         Native.KeepTopmost(this);                                           // Review #7
-        RideRecorder.RecoverUnexported(RidesFolder);
+        if (RideRecorder.RecoverUnexported(RidesFolder).Count > 0) Notice(NoticeKind.Success, "Last ride recovered");
         Render(_state.Current);
         _lastTick = Stopwatch.GetTimestamp();
         _timer.Start();
@@ -189,12 +191,12 @@ public partial class MainWindow : Window
         var trainer = new BleTrainer(_state);
         try
         {
-            _message = "Suche Trainer …";
+            _message = "Searching for trainer …";
             ulong? address = _settings.TrainerAddress
                 ?? await BleScan.FindFirstAsync(BleUuids.FitnessMachineService, TimeSpan.FromSeconds(15));
             _bluetoothOff = false;                                          // die Suche lief, also ist Bluetooth an
-            if (address is null) { _message = "Kein Trainer gefunden"; return false; }
-            _message = "Verbinde …";
+            if (address is null) { _message = "No trainer found"; return false; }
+            _message = "Connecting …";
             await trainer.ConnectAsync(address.Value);
             _trainer = trainer;
             _lastTrainerError = null;
@@ -203,7 +205,7 @@ public partial class MainWindow : Window
             _settings.Save();
             if (trainer.PowerRange is { } range) _guard.PowerLimits = range;
             _guard.Reapply();                                               // Startzustand flache Straße oder das schon gewählte Ziel
-            _message = "Warte auf Trainer …";                               // erscheint nur, falls die Verbindung später abreißt
+            _message = "Waiting for trainer …";                               // erscheint nur, falls die Verbindung später abreißt
             return true;
         }
         catch (Exception ex)
@@ -212,7 +214,7 @@ public partial class MainWindow : Window
             if (ex.Message != _lastTrainerError) RawLog.Note("Trainer: " + ex.Message);   // bei Dauerfehlern nicht alle 10 s
             _lastTrainerError = ex.Message;
             _bluetoothOff = ex.Message.Contains("Bluetooth");
-            _message = _bluetoothOff ? "Bluetooth ist aus" : "Verbindung fehlgeschlagen";
+            _message = _bluetoothOff ? "Bluetooth is off" : "Connection failed";
             _settings.TrainerAddress = null;                                // beim nächsten Versuch neu suchen
             _settings.Save();
             return false;
@@ -258,7 +260,7 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             await strap.DisposeAsync();                                     // Adresse bleibt: Gurt evtl. nur noch nicht angelegt
-            if (ex.Message != _lastStrapError) RawLog.Note("Pulsgurt: " + ex.Message);
+            if (ex.Message != _lastStrapError) RawLog.Note("HR strap: " + ex.Message);
             _lastStrapError = ex.Message;
             return false;
         }
@@ -268,7 +270,7 @@ public partial class MainWindow : Window
     public async Task<bool> ReconnectTrainerAsync()
     {
         if (_trainer is not null) { await _trainer.DisposeAsync(); _trainer = null; }
-        _message = "Verbinde neu …";
+        _message = "Reconnecting …";
         bool ok = await TryConnectTrainerAsync();                          // der Modus-Wächter schickt dem neuen Trainer das aktuelle Ziel
         if (!ok) _ = KeepTrainerConnectedAsync();
         return ok;
@@ -328,7 +330,7 @@ public partial class MainWindow : Window
         if (SetFill(LinkDot, !s.Connected ? "MutedBrush" : stale || controlLost ? "WarningBrush" : "PositiveBrush")) Motion.PopIn(LinkDot, 0.3, 380);
         string count = ConnectedDevices.ToString();
         if (LinkCount.Text != count) { LinkCount.Text = count; Motion.Bounce(LinkButton, 0.85); }
-        LinkButton.ToolTip = $"{TrainerStatus}\n{(s.StrapConnected ? "Pulsgurt verbunden" : "kein Pulsgurt")}\nKlick: Bluetooth-Einstellungen";
+        LinkButton.ToolTip = $"{TrainerStatus}\n{(s.StrapConnected ? "HR strap connected" : "No HR strap")}\nClick: Bluetooth settings";
 
         UpdateBluetoothCard();
         // nach dem gewählten Tab, nicht nach der Sichtbarkeit: Beim Wechsel blendet die alte Ansicht noch kurz aus
@@ -351,7 +353,6 @@ public partial class MainWindow : Window
     {
         avatar.Busy = _asleep && !_bluetoothOff;
         avatar.Warning = controlLost;
-        avatar.Recording = Recording;
     }
 
     private Avatar ActiveMascot => _compact ? MiniMascot : Mascot;
@@ -375,14 +376,6 @@ public partial class MainWindow : Window
     {
         Mascot.Mood = MoodFor(s, stale, controlLost, zone);
         SetBadges(Mascot, controlLost);
-        // Bluetooth aus zeigt die große Karte, die Statuszeile bleibt dann leer
-        StatusLine.Visibility = _bluetoothOff && !s.Connected ? Visibility.Hidden : Visibility.Visible;
-        SubtitleText.Text = !s.Connected ? _message
-            : stale ? "keine Daten"
-            : controlLost ? "Steuerung verloren"
-            : _sim.Finished ? "Ziel erreicht"
-            : TrainerName;
-        if (SetFill(StatusDot, !s.Connected ? "MutedBrush" : stale || controlLost ? "WarningBrush" : "PositiveBrush")) Motion.PopIn(StatusDot, 0.3, 380);
 
         // die drei wichtigsten Werte, immer sichtbar; „–“, wenn der Trainer sie nicht liefert (D100: keine Trittfrequenz).
         // Live-Werte springen wie bei Zwift: Ein Hochzählen bei jedem Wert würde das Overlay ständig neu zeichnen (CPU).
@@ -392,7 +385,7 @@ public partial class MainWindow : Window
         var chip = _guard.TargetPowerW is null ? Visibility.Collapsed : Visibility.Visible;
         if (chip != TargetChip.Visibility && chip == Visibility.Visible) Motion.PopIn(TargetChip, 0.6, 420, 0, 0.5);
         TargetChip.Visibility = chip;
-        TargetChipText.Text = $"ZIEL {_guard.TargetPowerW} W";
+        TargetChipText.Text = $"TARGET {_guard.TargetPowerW} W";
         ShowZone(zone);
 
         SpeedRun.Text = $"{s.VirtualSpeedKmh:0.0}";
@@ -438,17 +431,17 @@ public partial class MainWindow : Window
         if (_guard.TargetPowerW is not int target) { if (ErgRun.Text != "–") { _ergCounter.Stop(0); ErgRun.Text = "–"; } }
         else if (ErgRun.Text == "–") _ergCounter.Stop(target);
         else _ergCounter.CountTo(target);                                  // ± zählt sichtbar hoch und runter
-        ModeText.Text = erg ? "ERG AKTIV" : _guard.Mode == ControlMode.Sim ? "SIMULATION" : "FREI";
+        ModeText.Text = erg ? "ERG ON" : _guard.Mode == ControlMode.Sim ? "SIMULATION" : "FREE";
         if ((ModeChip.Tag as bool?) != erg)
         {
             ModeChip.Tag = erg;
             ModeChip.SetResourceReference(Border.BackgroundProperty, erg ? "AccentBrush" : "ChipBrush");
             ModeText.SetResourceReference(TextBlock.ForegroundProperty, erg ? "OnAccentBrush" : "TextBrush");
         }
-        ErgToggleButton.Content = erg ? "ERG beenden" : "ERG starten";
+        ErgToggleButton.Content = erg ? "End ERG" : "Start ERG";
         var (min, max) = _guard.PowerLimits;
-        ErgHint.Text = erg ? $"Bereich {min}–{max} W"                       // Tastenkürzel stehen im Tooltip von − und +
-            : $"Simulation: {_limiter.Current:+0.0;-0.0;0.0} % am Trainer";
+        ErgHint.Text = erg ? $"Range {min}–{max} W"                       // Tastenkürzel stehen im Tooltip von − und +
+            : $"Sim: {_limiter.Current:+0.0;-0.0;0.0} % on trainer";
     }
 
     // Brush aus dem Stil setzen, der beim Stilwechsel mitwechselt. Nur bei Änderung, damit nichts neu gezeichnet wird.
@@ -468,7 +461,7 @@ public partial class MainWindow : Window
     private void OnBluetoothChanged(bool on)
     {
         _bluetoothOff = !on;
-        _message = on ? "Suche Trainer …" : "Bluetooth ist aus";
+        _message = on ? "Searching for trainer …" : "Bluetooth is off";
         if (!on) { _bluetoothCardDismissed = false; Render(_state.Current); return; }
         _wake.TrySetResult();                                              // Trainersuche wartet nicht die 10 s ab
         if (!_strapLoop && !Demo) _ = KeepStrapConnectedAsync();
@@ -543,7 +536,7 @@ public partial class MainWindow : Window
         _bluetoothCardDismissed = true;
         UpdateBluetoothCard();
         try { Process.Start(new ProcessStartInfo("ms-settings:bluetooth") { UseShellExecute = true }); }
-        catch (Exception ex) { RawLog.Note("Bluetooth-Einstellungen nicht geöffnet: " + ex.Message); }
+        catch (Exception ex) { RawLog.Note("Couldn't open Bluetooth settings: " + ex.Message); }
     }
 
     // ---------- Meldungen ----------
@@ -555,17 +548,20 @@ public partial class MainWindow : Window
         if (s.Connected != _wasConnected)
         {
             if (s.Connected) CheckMark();
-            else if (_everConnected && !_closing) Notice(NoticeKind.Warning, "Verbindung zum Trainer weg – ich warte, bis er wieder da ist", 8);
+            else if (_everConnected && !_closing) Notice(NoticeKind.Warning, "Trainer disconnected", 6);
             _everConnected |= s.Connected;
             _wasConnected = s.Connected;
         }
         bool hasControl = s.Connected && _trainer?.Control is { HasControl: true };
-        if (controlLost && _hadControl) { _controlLost = true; Notice(NoticeKind.Warning, "Steuerung verloren: Eine andere App greift auf den Trainer zu", 8); }
+        if (controlLost && _hadControl) { _controlLost = true; Notice(NoticeKind.Warning, "Another app took control", 6); }
         if (hasControl && _controlLost) { _controlLost = false; CheckMark(); }
         _hadControl = hasControl;
         if (s.StrapConnected && !_strapWas) CheckMark();
         _strapWas = s.StrapConnected;
-        if (_sim.Finished && !_wasFinished && _sim.Route is not null) { CheckMark(); Mascot.Greet(200); }
+        // Aufnahme startet von selbst mit dem ersten Tritt: einmal kurz sagen, kleiner Hüpfer
+        if (Recording && !_wasRecording) { Notice(NoticeKind.Info, "Recording started", 4); ActiveMascot.Hop(); }
+        _wasRecording = Recording;
+        if (_sim.Finished && !_wasFinished && _sim.Route is not null) { CheckMark(); Mascot.Greet(200); Notice(NoticeKind.Success, "Route finished"); }
         _wasFinished = _sim.Finished;
     }
 
@@ -677,10 +673,10 @@ public partial class MainWindow : Window
     {
         try
         {
-            if (_ride.Export() is { } file) Notice(NoticeKind.Success, $"Fahrt gespeichert: Dokumente\\Domestique\\{Path.GetFileName(file)}", 8);
-            else Notice(NoticeKind.Info, "Noch keine Fahrt – die Aufzeichnung startet mit dem ersten Tritt");
+            if (_ride.Export() is { } file) Notice(NoticeKind.Success, "Ride saved · Documents\\Domestique", 6);
+            else Notice(NoticeKind.Info, "No ride yet");
         }
-        catch (Exception ex) { Notice(NoticeKind.Error, "Export fehlgeschlagen: " + ex.Message, 10); }
+        catch (Exception ex) { Notice(NoticeKind.Error, "Export failed: " + ex.Message, 8); }
     }
 
     // ---------- Strecken und Karte (Phase 5, 6, 9) ----------
@@ -712,7 +708,7 @@ public partial class MainWindow : Window
     private void RefreshRouteList(string? select = null)
     {
         if (RouteList is null) return;
-        var items = new List<RouteItem> { new(null, "Keine Strecke", NoRouteIcon, "flach") };
+        var items = new List<RouteItem> { new(null, "No route", NoRouteIcon, "flat") };
         if (AppRoutesSegment.IsChecked == true)
             items.AddRange(BuiltInRoutes.Names.Select(n => new RouteItem("app:" + n, n, RouteIcon, $"{BuiltInRoutes.LengthKm(n):0} km")));
         else
@@ -724,7 +720,7 @@ public partial class MainWindow : Window
 
     private void PickRouteFile_Click(object sender, RoutedEventArgs e)
     {
-        var dialog = new Microsoft.Win32.OpenFileDialog { Filter = "GPX-Strecke (*.gpx)|*.gpx" };
+        var dialog = new Microsoft.Win32.OpenFileDialog { Filter = "GPX route (*.gpx)|*.gpx" };
         if (dialog.ShowDialog(this) == true) ImportRoute(dialog.FileName);
     }
 
@@ -746,7 +742,7 @@ public partial class MainWindow : Window
             RefreshRouteList(select: imported);
             RouteList.ScrollIntoView(RouteList.SelectedItem);
         }
-        catch (Exception ex) { Notice(NoticeKind.Error, "Datei nicht lesbar: " + ex.Message, 10); }
+        catch (Exception ex) { Notice(NoticeKind.Error, "Can't read file: " + ex.Message, 8); }
     }
 
     private void ConfirmRoute_Click(object sender, RoutedEventArgs e)
@@ -760,7 +756,7 @@ public partial class MainWindow : Window
     public void LoadFile(string path)
     {
         try { ShowRoute(GpxLoader.Load(File.ReadAllText(path), Path.GetFileNameWithoutExtension(path)), path); }
-        catch (Exception ex) { Notice(NoticeKind.Error, "Strecke nicht lesbar: " + ex.Message, 10); }
+        catch (Exception ex) { Notice(NoticeKind.Error, "Can't read route: " + ex.Message, 8); }
     }
 
     // Die Strecke erscheint auf der Übersicht
@@ -769,13 +765,13 @@ public partial class MainWindow : Window
         _sim.Load(route);
         _activeRoute = key;
         MapLine.Points = RouteGeometry.Map(route, 72, 72, out _mapProject);
-        ProfileLine.Points = RouteGeometry.Profile(route, 248, 72, out _profileProject);
+        ProfileLine.Points = RouteGeometry.Profile(route, 216, 72, out _profileProject);
         ProfileArea.Points = RouteGeometry.Area(ProfileLine.Points, 72);
         HomeTab.IsChecked = true;
         Render(_state.Current);
         MoveDots();
         PlayRouteLoaded();
-        RawLog.Note($"Strecke geladen: {route.Name}, {route.LengthM / 1000:0.0} km");
+        RawLog.Note($"Route loaded: {route.Name}, {route.LengthM / 1000:0.0} km");
     }
 
     private void UnloadRoute()
@@ -1041,7 +1037,7 @@ public partial class MainWindow : Window
         _clickThrough = on;
         Native.SetClickThrough(this, on);
         ClickThroughButton.IsChecked = on;
-        if (on) Notice(NoticeKind.Info, "Durchklicken an: Klicks gehen ans Video. Strg+Alt+D schaltet zurück", 8);
+        if (on) Notice(NoticeKind.Info, "Click-through on · Ctrl+Alt+D to undo", 6);
     }
 
     private void ClickThrough_Click(object sender, RoutedEventArgs e) => SetClickThrough(ClickThroughButton.IsChecked == true);
@@ -1161,6 +1157,9 @@ public partial class MainWindow : Window
     {
         if (_compact || _switching || _greeting) return;
         _switching = _anchorTop = true;
+        // Fenster behält seine volle Höhe (unter der Pille durchsichtig, Klicks gehen durch): Ändert ein durchsichtiges
+        // Fenster seine Größe, zeigt Windows kurz das alte Bild in der neuen Größe, beim Aufklappen sah man das flackern
+        MinHeight = ActualHeight;
         Motion.Run(Expanded, OpacityProperty, 1, 0, 110, Co.OutE);         // erst ausblenden, dann zusammenziehen,
         Motion.After(100, () => _island.Close(CompactW, CompactH, CompactR, () =>   // sonst schneidet die Kante den Inhalt
         {
@@ -1195,7 +1194,7 @@ public partial class MainWindow : Window
             Header.Opacity = Views.Opacity = 0;
             UpdateLayout();
             _island.Jump(CompactW, CompactH, CompactR);
-            _island.Open(() => { _switching = false; _anchorTop = false; });
+            _island.Open(() => { _switching = false; _anchorTop = false; MinHeight = 0; });
             Render(_state.Current);
             // Inhalt erst, wenn die Insel fast offen ist: sonst schneidet ihre Kante die Karten
             Motion.Run(Header, OpacityProperty, 0, 1, 220, Co.OutE, 240);
@@ -1226,7 +1225,7 @@ public partial class MainWindow : Window
         _settings.Top = Top;
         _settings.Save();
         try { _ride.Export(); }
-        catch (Exception ex) { RawLog.Note("Export beim Beenden fehlgeschlagen: " + ex.Message); }   // die CSV bleibt, Rettung beim nächsten Start
+        catch (Exception ex) { RawLog.Note("Export on quit failed: " + ex.Message); }   // die CSV bleibt, Rettung beim nächsten Start
         _settingsWindow?.Close();
         base.OnClosing(e);
     }

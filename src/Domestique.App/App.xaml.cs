@@ -1,4 +1,6 @@
+﻿using System.Globalization;
 using System.Windows;
+using System.Windows.Markup;
 
 namespace Domestique.App;
 
@@ -9,6 +11,13 @@ public partial class App : Application
 
     protected override void OnStartup(StartupEventArgs e)
     {
+        // Englische Oberfläche, also auch englisches Zahlenformat (31.4 km/h), egal wie Windows eingestellt ist.
+        // Aufzeichnung und Dateien sind davon unabhängig, sie schreiben und lesen kulturunabhängig.
+        var english = CultureInfo.GetCultureInfo("en-US");
+        CultureInfo.DefaultThreadCurrentCulture = CultureInfo.DefaultThreadCurrentUICulture = english;
+        Thread.CurrentThread.CurrentCulture = Thread.CurrentThread.CurrentUICulture = english;
+        FrameworkElement.LanguageProperty.OverrideMetadata(typeof(FrameworkElement),
+            new FrameworkPropertyMetadata(XmlLanguage.GetLanguage(english.IetfLanguageTag)));
         ApplyTheme(AppSettings.Load().Theme);                     // vor dem ersten Fenster, sonst blitzt der Standardstil auf
         base.OnStartup(e);
     }

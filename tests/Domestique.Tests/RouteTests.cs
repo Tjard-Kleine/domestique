@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Text;
 using Domestique.Core.Physics;
 using Domestique.Core.Routes;
@@ -106,7 +106,7 @@ public class RouteTests
     public void No_route_after_unload_rides_flat_and_keeps_distance()
     {
         var sim = new RouteSim(new RiderPhysics());
-        sim.Load(BuiltInRoutes.Load("Bergankunft"));
+        sim.Load(BuiltInRoutes.Load("Summit Finish"));
         for (int i = 0; i < 400; i++) sim.Step(250, 0.25);
         double ridden = sim.DistanceM;
         sim.Unload();
@@ -117,10 +117,10 @@ public class RouteTests
     }
 
     [Theory]
-    [InlineData("Flachland-Runde", 2.5)]
-    [InlineData("Hügelland", 7)]
-    [InlineData("Bergankunft", 11)]
-    [InlineData("Zeitfahr-Oval", 1)]
+    [InlineData("Flatland Loop", 2.5)]
+    [InlineData("Rolling Hills", 7)]
+    [InlineData("Summit Finish", 11)]
+    [InlineData("Time Trial Oval", 1)]
     public void Built_in_routes_have_their_length_and_grades(string name, double maxGrade)
     {
         var route = BuiltInRoutes.Load(name);
@@ -131,7 +131,7 @@ public class RouteTests
     [Fact]
     public void Mountain_finish_climbs_seven_percent_on_average()
     {
-        var route = BuiltInRoutes.Load("Bergankunft");
+        var route = BuiltInRoutes.Load("Summit Finish");
         double climb = (route.Points[^1].ElevationM - route.Points[0].ElevationM) / route.LengthM * 100;
         Assert.InRange(climb, 6.3, 7.7);
     }
@@ -140,7 +140,7 @@ public class RouteTests
     public void Counts_climbed_meters_of_the_route()
     {
         var sim = new RouteSim(new RiderPhysics());
-        sim.Load(BuiltInRoutes.Load("Bergankunft"));
+        sim.Load(BuiltInRoutes.Load("Summit Finish"));
         while (!sim.Finished) sim.Step(300, 1);
         Assert.InRange(sim.ClimbedM, 940, 1000);                           // 600 → 1580 m
         double atTop = sim.ClimbedM;
@@ -154,7 +154,7 @@ public class RouteTests
         var sim = new RouteSim(new RiderPhysics());
         for (int i = 0; i < 600; i++) sim.Step(250, 1);                     // ohne Strecke
         Assert.Equal(0, sim.ClimbedM);
-        sim.Load(BuiltInRoutes.Load("Zeitfahr-Oval"));
+        sim.Load(BuiltInRoutes.Load("Time Trial Oval"));
         while (!sim.Finished) sim.Step(250, 1);
         Assert.InRange(sim.ClimbedM, 0, 25);
     }
