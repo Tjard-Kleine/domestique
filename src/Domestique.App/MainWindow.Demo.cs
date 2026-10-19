@@ -28,21 +28,21 @@ public partial class MainWindow
     private double _demoPower, _demoHeart = 72, _demoTourLeft;
     private bool _demoData = true, _demoConnected, _demoBluetoothOff;
 
-    private string TrainerName => _trainer?.Name ?? (Demo ? "Demo-Trainer" : "Trainer");
+    private string TrainerName => _trainer?.Name ?? (Demo ? "Demo trainer" : "Trainer");
 
     // Roter Aufnahmepunkt wie bei einer echten Fahrt, ohne dass etwas gespeichert wird
     private bool Recording => _ride.Current is not null || (Demo && _demoConnected && _demoData && _demoPower > 1);
 
     private void StartDemo()
     {
-        RawLog.Note("Demo-Modus");
-        _message = "Suche Trainer …";
+        RawLog.Note("Demo mode");
+        _message = "Searching for trainer …";
         _demoWatts = (int)Math.Round(ZoneMiddle[1] * _settings.FtpW);
         _demoTimer.Tick += (_, _) => DemoTick();
         _demoTimer.Start();
         PreviewKeyDown += DemoKey;
         Motion.After(1200, () => _demoConnected = true);                   // kurz suchen, dann verbunden
-        Notice(NoticeKind.Info, "Demo: aufs Overlay klicken · 1–6 Zone · ↑↓ Watt · 0 Pause · S Daten · V Verbindung · B Bluetooth · A Rundgang", 12);
+        Notice(NoticeKind.Info, "Demo · click the overlay · 1–6 zone · ↑↓ watts · 0 stop · S data · V link · B Bluetooth · A tour", 12);
     }
 
     private void DemoTick()
@@ -91,7 +91,7 @@ public partial class MainWindow
                 break;
             case Key.B: DemoBluetooth(!_demoBluetoothOff); break;
             case Key.A: if (_demoTourStep >= 0) StopTour(); else { _demoTourStep = -1; NextTourStep(); } break;
-            case Key.H: Notice(NoticeKind.Info, "1–6 Zone · ↑↓ ±10 W (Umschalt ±50) · 0 Pause · S Daten · V Verbindung · B Bluetooth · A Rundgang", 10); break;
+            case Key.H: Notice(NoticeKind.Info, "1–6 zone · ↑↓ ±10 W (Shift ±50) · 0 stop · S data · V link · B Bluetooth · A tour", 10); break;
             default: return;
         }
         e.Handled = true;

@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Threading.Channels;
 using Domestique.Core.Protocol;
 
@@ -81,7 +81,7 @@ public sealed class ControlPoint : IAsyncDisposable
     {
         try
         {
-            if (!await RequestControlAsync()) { _log("Control Point: Kontrolle nicht erhalten"); return false; }
+            if (!await RequestControlAsync()) { _log("Control Point: control not granted"); return false; }
             await SendAsync(FtmsCommands.Start());
             if (Volatile.Read(ref _lastTarget) is { } t) _targets.Writer.TryWrite(t);
             return true;
@@ -99,7 +99,7 @@ public sealed class ControlPoint : IAsyncDisposable
         long now = Stopwatch.GetTimestamp();
         if (_lastRegain != 0 && Stopwatch.GetElapsedTime(_lastRegain, now) < RegainCooldown) return Task.CompletedTask;
         _lastRegain = now;
-        _log("Control Point: Kontrolle verloren, hole sie zurück");
+        _log("Control Point: control lost, taking it back");
         return TakeControlAsync();
     }
 
@@ -118,7 +118,7 @@ public sealed class ControlPoint : IAsyncDisposable
                 try
                 {
                     if (!await SendWithControlAsync(command))
-                        _log($"Control Point: {Convert.ToHexString(command)} nicht bestätigt");
+                        _log($"Control Point: {Convert.ToHexString(command)} not confirmed");
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException) { _log("Control Point: " + ex.Message); }
             }

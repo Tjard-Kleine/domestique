@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Xml.Linq;
 
 namespace Domestique.Core.Routes;
@@ -16,18 +16,18 @@ public static class GpxLoader
         var all = XDocument.Parse(xml).Descendants().ToList();
         var nodes = all.Where(e => e.Name.LocalName == "trkpt").ToList();
         if (nodes.Count == 0) nodes = all.Where(e => e.Name.LocalName == "rtept").ToList();
-        if (nodes.Count < 2) throw new FormatException("Die GPX-Datei enthält keine Strecke.");
+        if (nodes.Count < 2) throw new FormatException("The GPX file contains no track.");
         var raw = nodes.Select(e => (
             Lat: Num(e.Attribute("lat")?.Value, "Breite"),
-            Lon: Num(e.Attribute("lon")?.Value, "Länge"),
-            Ele: Num(e.Elements().FirstOrDefault(c => c.Name.LocalName == "ele")?.Value, "Höhe"))).ToList();
+            Lon: Num(e.Attribute("lon")?.Value, "longitude"),
+            Ele: Num(e.Elements().FirstOrDefault(c => c.Name.LocalName == "ele")?.Value, "elevation"))).ToList();
 
         // 2. aufsummierte Distanz
         var dist = new double[raw.Count];
         for (int i = 1; i < raw.Count; i++)
             dist[i] = dist[i - 1] + Haversine(raw[i - 1].Lat, raw[i - 1].Lon, raw[i].Lat, raw[i].Lon);
         double length = dist[^1];
-        if (length < 2 * StepM) throw new FormatException("Die Strecke ist kürzer als 20 m.");
+        if (length < 2 * StepM) throw new FormatException("The route is shorter than 20 m.");
 
         // 3. auf festes Raster umrechnen (linear interpolieren)
         int count = (int)(length / StepM) + 1;
@@ -67,7 +67,7 @@ public static class GpxLoader
     private static double Num(string? s, string what) =>
         double.TryParse(s, NumberStyles.Float, CultureInfo.InvariantCulture, out double v)
             ? v
-            : throw new FormatException($"GPX-Punkt ohne gültige {what}. Strecken ohne Höhendaten gehen nicht.");
+            : throw new FormatException($"GPX point without a valid {what}. Routes need elevation data.");
 
     private static double Haversine(double lat1, double lon1, double lat2, double lon2)
     {

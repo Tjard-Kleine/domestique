@@ -1,4 +1,4 @@
-using System.Buffers.Binary;
+﻿using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Runtime.InteropServices.WindowsRuntime;
 using Domestique.Core;
@@ -26,7 +26,7 @@ public sealed class BleTrainer(SessionState state) : IAsyncDisposable
     public async Task ConnectAsync(ulong address)
     {
         _device = await BluetoothLEDevice.FromBluetoothAddressAsync(address)
-            ?? throw new InvalidOperationException("Trainer nicht erreichbar.");
+            ?? throw new InvalidOperationException("Trainer not reachable.");
         _device.ConnectionStatusChanged += OnConnectionStatusChanged;
 
         _session = await GattSession.FromDeviceIdAsync(_device.BluetoothDeviceId);
@@ -34,20 +34,20 @@ public sealed class BleTrainer(SessionState state) : IAsyncDisposable
 
         var services = await _device.GetGattServicesForUuidAsync(BleUuids.FitnessMachineService, BluetoothCacheMode.Uncached);
         if (services.Status != GattCommunicationStatus.Success || services.Services.Count == 0)
-            throw new InvalidOperationException($"FTMS-Service nicht gefunden ({services.Status}).");
+            throw new InvalidOperationException($"FTMS service not found ({services.Status}).");
         _ftms = services.Services[0];
 
         _bikeData = await GetCharacteristicAsync(BleUuids.IndoorBikeData)
-            ?? throw new InvalidOperationException("Indoor Bike Data fehlt.");
+            ?? throw new InvalidOperationException("Indoor Bike Data missing.");
         _bikeData.ValueChanged += OnBikeData;
         var result = await _bikeData.WriteClientCharacteristicConfigurationDescriptorAsync(
             GattClientCharacteristicConfigurationDescriptorValue.Notify);
         if (result != GattCommunicationStatus.Success)
-            throw new InvalidOperationException($"Abo fehlgeschlagen ({result}).");
+            throw new InvalidOperationException($"Subscription failed ({result}).");
 
         await ConnectControlAsync();
         state.Update(s => s with { Connected = true });
-        RawLog.Note($"Trainer verbunden ({_device.Name}), ERG-Bereich {PowerRange?.ToString() ?? "unbekannt"}");
+        RawLog.Note($"Trainer connected ({_device.Name}), ERG range {PowerRange?.ToString() ?? "unknown"}");
     }
 
     // Steuerung ist optional: ohne Control Point bleibt der Trainer lesbar.
@@ -64,11 +64,11 @@ public sealed class BleTrainer(SessionState state) : IAsyncDisposable
         }
 
         _controlPoint = await GetCharacteristicAsync(BleUuids.ControlPoint);
-        if (_controlPoint is null) { RawLog.Note("Kein Control Point, Trainer nur lesbar"); return; }
+        if (_controlPoint is null) { RawLog.Note("No Control Point, trainer is read-only"); return; }
         _controlPoint.ValueChanged += OnControlPoint;
         var s = await _controlPoint.WriteClientCharacteristicConfigurationDescriptorAsync(
             GattClientCharacteristicConfigurationDescriptorValue.Indicate);    // 1. erst abonnieren
-        if (s != GattCommunicationStatus.Success) { RawLog.Note($"Control Point nicht abonnierbar ({s})"); return; }
+        if (s != GattCommunicationStatus.Success) { RawLog.Note($"Control Point can't be subscribed ({s})"); return; }
         Control = new ControlPoint(WriteControlAsync);
         await Control.TakeControlAsync();                                     // 2. dann Kontrolle holen und starten
     }
@@ -104,7 +104,7 @@ public sealed class BleTrainer(SessionState state) : IAsyncDisposable
         var bytes = args.CharacteristicValue.ToBytes();
         RawLog.Write("2AD2", bytes);
         var d = IndoorBikeDataParser.Parse(bytes);
-        if (d is null) { RawLog.Note("2AD2 nicht lesbar"); return; }
+        if (d is null) { RawLog.Note("2AD2 not readable"); return; }
 
         long now = Stopwatch.GetTimestamp();
         int? avg = d.PowerW is int w ? _avg.Add(now, w) : null;
@@ -141,7 +141,7 @@ public sealed class BleTrainer(SessionState state) : IAsyncDisposable
         {
             _wasDisconnected = true;
             Control?.OnDisconnected();
-            RawLog.Note("Trainer getrennt");
+            RawLog.Note("Trainer disconnected");
         }
         else if (_wasDisconnected)
         {
@@ -153,7 +153,7 @@ public sealed class BleTrainer(SessionState state) : IAsyncDisposable
     // Review #4: Windows verbindet selbst neu (MaintainConnection), aber Abos und Kontrolle sind weg.
     private async Task ResubscribeAsync()
     {
-        RawLog.Note("Trainer wieder da, abonniere neu");
+        RawLog.Note("Trainer back, resubscribing");
         for (int attempt = 1; attempt <= 3; attempt++)
         {
             try
@@ -166,10 +166,10 @@ public sealed class BleTrainer(SessionState state) : IAsyncDisposable
                     return;
                 }
             }
-            catch (Exception ex) { RawLog.Note($"Neu-Abo Versuch {attempt}: {ex.Message}"); }
+            catch (Exception ex) { RawLog.Note($"Resubscribe attempt {attempt}: {ex.Message}"); }
             await Task.Delay(TimeSpan.FromSeconds(2));
         }
-        RawLog.Note("Neu-Abo nach Reconnect fehlgeschlagen");
+        RawLog.Note("Resubscribe after reconnect failed");
     }
 
     private static async Task<bool> SubscribeAsync(GattCharacteristic? c, GattClientCharacteristicConfigurationDescriptorValue value) =>

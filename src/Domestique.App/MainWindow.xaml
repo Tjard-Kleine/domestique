@@ -34,12 +34,12 @@
                 CornerRadius="{DynamicResource ShellRadius}" Padding="10,8,10,10">
             <Border.ContextMenu>
                 <ContextMenu>
-                    <MenuItem Header="Strecke laden …" Click="LoadRoute_Click"/>
-                    <MenuItem Header="ERG beenden   Strg+Alt+Ende" Click="EndErg_Click"/>
-                    <MenuItem Header="Fahrt exportieren" Click="Export_Click"/>
-                    <MenuItem Header="Einstellungen   Strg+Alt+O" Click="SettingsMenu_Click"/>
+                    <MenuItem Header="Load route …" Click="LoadRoute_Click"/>
+                    <MenuItem Header="End ERG   Ctrl+Alt+End" Click="EndErg_Click"/>
+                    <MenuItem Header="Export ride" Click="Export_Click"/>
+                    <MenuItem Header="Settings   Ctrl+Alt+O" Click="SettingsMenu_Click"/>
                     <Separator/>
-                    <MenuItem Header="Beenden" Click="Exit_Click"/>
+                    <MenuItem Header="Quit" Click="Exit_Click"/>
                 </ContextMenu>
             </Border.ContextMenu>
             <Grid>
@@ -51,9 +51,9 @@
                         <Border x:Name="TabPill" Width="34" Height="26" CornerRadius="13" HorizontalAlignment="Left" VerticalAlignment="Center"
                                 Background="{DynamicResource ChipBrush}"/>
                         <StackPanel Orientation="Horizontal">
-                            <RadioButton x:Name="HomeTab" Style="{StaticResource NavTab}" Content="&#xE80F;" ToolTip="Übersicht" IsChecked="True" Checked="Tab_Checked"/>
-                            <RadioButton x:Name="RouteTab" Style="{StaticResource NavTab}" Content="&#xE707;" ToolTip="Strecke" Checked="Tab_Checked"/>
-                            <RadioButton x:Name="ErgTab" Style="{StaticResource NavTab}" Content="&#xE945;" ToolTip="ERG-Steuerung" Checked="Tab_Checked"/>
+                            <RadioButton x:Name="HomeTab" Style="{StaticResource NavTab}" Content="&#xE80F;" ToolTip="Overview" IsChecked="True" Checked="Tab_Checked"/>
+                            <RadioButton x:Name="RouteTab" Style="{StaticResource NavTab}" Content="&#xE707;" ToolTip="Route" Checked="Tab_Checked"/>
+                            <RadioButton x:Name="ErgTab" Style="{StaticResource NavTab}" Content="&#xE945;" ToolTip="ERG" Checked="Tab_Checked"/>
                         </StackPanel>
                     </Grid>
                     <!-- kurze Hinweise statt Meldungen über dem Inhalt: Punkt in der Farbe der Art, Text, verschwindet von selbst -->
@@ -71,13 +71,13 @@
                             </StackPanel>
                         </Button>
                         <ToggleButton x:Name="ClickThroughButton" Style="{StaticResource NavButton}" Click="ClickThrough_Click"
-                                      ToolTip="Durchklicken: Mausklicks gehen ans Video. Zurück mit Strg+Alt+D">
+                                      ToolTip="Click-through: clicks go to the video. Ctrl+Alt+D to undo">
                             <Path Data="M0,0 L0,12.5 L3.4,9.4 L5.8,14.6 L8,13.6 L5.6,8.5 L10.2,8.5 Z" Height="13" Stretch="Uniform"
                                   Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}"/>
                         </ToggleButton>
                         <!-- minimieren: nur noch Watt, Puls und Trittfrequenz in der kleinen Notch -->
-                        <Button Style="{StaticResource NavButton}" Content="&#xE70E;" ToolTip="Minimieren: nur die Werte" Click="Minimize_Click"/>
-                        <Button Style="{StaticResource NavButton}" Content="&#xE713;" ToolTip="Einstellungen (Strg+Alt+O)" Click="SettingsMenu_Click"/>
+                        <Button x:Name="MinimizeButton" Style="{StaticResource NavButton}" Content="&#xE70E;" ToolTip="Minimize" Click="Minimize_Click"/>
+                        <Button Style="{StaticResource NavButton}" Content="&#xE713;" ToolTip="Settings (Ctrl+Alt+O)" Click="SettingsMenu_Click"/>
                     </StackPanel>
                 </Grid>
 
@@ -90,10 +90,11 @@
                     <!-- ===== Übersicht: links wie das Zwift-HUD Avatar, Watt, Puls und Trittfrequenz; rechts Strecke und weitere Werte ===== -->
                     <Grid x:Name="HomeView" VerticalAlignment="Top">
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="344"/>
+                            <ColumnDefinition Width="364"/>
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
 
+                        <!-- Links: Avatar mit Zone, große Wattzahl mit Blitz und W, daneben Puls und Kadenz mit kleinen Symbolen -->
                         <Border x:Name="RideCard" Style="{StaticResource Card}" Padding="12,10">
                             <Grid>
                                 <Grid.ColumnDefinitions>
@@ -117,58 +118,59 @@
                                     </UniformGrid>
                                 </StackPanel>
 
-                                <!-- Zustand und Watt, groß, die Einheit klein mit Symbol daneben -->
+                                <!-- Watt groß; vierstellige Werte werden notfalls etwas kleiner statt überzulaufen -->
                                 <StackPanel x:Name="PowerColumn" Grid.Column="1" VerticalAlignment="Center">
-                                    <DockPanel x:Name="StatusLine">
-                                        <Ellipse x:Name="StatusDot" Width="6" Height="6" Margin="0,0,6,0" VerticalAlignment="Center" Fill="{DynamicResource MutedBrush}"/>
-                                        <TextBlock x:Name="SubtitleText" Text="Suche Trainer …" Style="{StaticResource Caption}" TextTrimming="CharacterEllipsis"/>
-                                    </DockPanel>
-                                    <StackPanel Orientation="Horizontal">
-                                        <!-- Vintage: Farbstreifen laufen in die Zahl -->
-                                        <StackPanel Visibility="{DynamicResource StripeVisibility}" Width="22" Margin="0,6,7,0" VerticalAlignment="Center">
-                                            <Rectangle Height="3" Margin="0,0,0,1" Fill="{DynamicResource Stripe1Brush}"/>
-                                            <Rectangle Height="3" Margin="0,0,0,1" Fill="{DynamicResource Stripe2Brush}"/>
-                                            <Rectangle Height="3" Margin="0,0,0,1" Fill="{DynamicResource Stripe3Brush}"/>
-                                            <Rectangle Height="3" Margin="0,0,0,1" Fill="{DynamicResource Stripe4Brush}"/>
+                                    <Viewbox StretchDirection="DownOnly" Stretch="Uniform" HorizontalAlignment="Left">
+                                        <StackPanel Orientation="Horizontal">
+                                            <!-- Vintage: Farbstreifen laufen in die Zahl -->
+                                            <StackPanel Visibility="{DynamicResource StripeVisibility}" Width="22" Margin="0,6,7,0" VerticalAlignment="Center">
+                                                <Rectangle Height="3" Margin="0,0,0,1" Fill="{DynamicResource Stripe1Brush}"/>
+                                                <Rectangle Height="3" Margin="0,0,0,1" Fill="{DynamicResource Stripe2Brush}"/>
+                                                <Rectangle Height="3" Margin="0,0,0,1" Fill="{DynamicResource Stripe3Brush}"/>
+                                                <Rectangle Height="3" Margin="0,0,0,1" Fill="{DynamicResource Stripe4Brush}"/>
+                                            </StackPanel>
+                                            <!-- Tour: gelber Balken wie in der TV-Grafik -->
+                                            <Rectangle Visibility="{DynamicResource AccentBarVisibility}" Width="4" Margin="0,12,9,10"
+                                                       RadiusX="2" RadiusY="2" Fill="{DynamicResource AccentBrush}"/>
+                                            <TextBlock Style="{DynamicResource BigNumber}" FontSize="{DynamicResource HeroNumberSize}" VerticalAlignment="Center">
+                                                <Run x:Name="PowerRun" Text="–"/>
+                                            </TextBlock>
+                                            <StackPanel VerticalAlignment="Center" Margin="6,0,0,0">
+                                                <Path Data="M7,0 L15,0 L10,9 L16,9 L5,24 L8,13 L2,13 Z" Width="17" Height="25" Stretch="Uniform"
+                                                      HorizontalAlignment="Center" Fill="{DynamicResource TextBrush}"/>
+                                                <TextBlock Text="W" Style="{DynamicResource BigNumber}" FontSize="{DynamicResource UnitSize}"
+                                                           HorizontalAlignment="Center" Margin="0,1,0,0"/>
+                                            </StackPanel>
                                         </StackPanel>
-                                        <!-- Tour: gelber Balken wie in der TV-Grafik -->
-                                        <Rectangle Visibility="{DynamicResource AccentBarVisibility}" Width="4" Margin="0,10,9,8"
-                                                   RadiusX="2" RadiusY="2" Fill="{DynamicResource AccentBrush}"/>
-                                        <TextBlock Style="{DynamicResource BigNumber}" FontSize="{DynamicResource HeroNumberSize}" VerticalAlignment="Center">
-                                            <Run x:Name="PowerRun" Text="–"/>
-                                        </TextBlock>
-                                        <StackPanel VerticalAlignment="Center" Margin="5,0,0,0">
-                                            <Path Data="M6.2,0 L0.6,8 H4.6 L3.4,14 L9.4,5.6 H5.4 Z" Width="10" Height="14" HorizontalAlignment="Center"
-                                                  Fill="{DynamicResource AccentBrush}"/>
-                                            <TextBlock Text="W" Style="{StaticResource Value}" FontSize="14" HorizontalAlignment="Center" Margin="0,1,0,0"
-                                                       Foreground="{DynamicResource SubtleBrush}"/>
-                                        </StackPanel>
-                                    </StackPanel>
+                                    </Viewbox>
                                     <Border x:Name="TargetChip" CornerRadius="6" Padding="6,1" HorizontalAlignment="Left"
                                             Background="{DynamicResource AccentBrush}" Visibility="Collapsed">
                                         <TextBlock x:Name="TargetChipText" FontSize="10.5" FontWeight="Bold" Foreground="{DynamicResource OnAccentBrush}"/>
                                     </Border>
                                 </StackPanel>
 
-                                <!-- Puls und Trittfrequenz wie bei Zwift: Zahl, daneben ein kleines Symbol, immer sichtbar -->
-                                <StackPanel x:Name="SideColumn" Grid.Column="2" VerticalAlignment="Center" Margin="8,0,0,0">
-                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Background="Transparent" ToolTip="Puls (bpm)">
-                                        <TextBlock Style="{StaticResource Value}" FontSize="22" VerticalAlignment="Center"><Run x:Name="HeartRun" Text="–"/></TextBlock>
-                                        <TextBlock Text="&#xEB52;" FontFamily="{StaticResource IconFont}" FontSize="14" Width="14" TextAlignment="Center"
-                                                   Margin="6,1,0,0" VerticalAlignment="Center" Foreground="{DynamicResource NegativeBrush}"/>
+                                <!-- Puls und Kadenz: große Zahl, kleines Symbol oben rechts daneben -->
+                                <StackPanel x:Name="SideColumn" Grid.Column="2" VerticalAlignment="Center" Margin="10,0,0,0">
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Background="Transparent" ToolTip="Heart rate (bpm)">
+                                        <TextBlock Style="{DynamicResource BigNumber}" FontSize="{DynamicResource SideNumberSize}"><Run x:Name="HeartRun" Text="–"/></TextBlock>
+                                        <Path x:Name="HeartIcon" Width="15" Height="13" Stretch="Uniform" Margin="3,6,0,0" VerticalAlignment="Top"
+                                              Fill="{DynamicResource TextBrush}"/>
                                     </StackPanel>
-                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,4,0,0" Background="Transparent" ToolTip="Trittfrequenz (U/min)">
-                                        <TextBlock Style="{StaticResource Value}" FontSize="22" VerticalAlignment="Center"><Run x:Name="CadenceRun" Text="–"/></TextBlock>
-                                        <!-- Drehpfeil: Umdrehungen pro Minute -->
-                                        <TextBlock Text="&#xE72C;" FontFamily="{StaticResource IconFont}" FontSize="14" Width="14" TextAlignment="Center"
-                                                   Margin="6,1,0,0" VerticalAlignment="Center" FontWeight="Bold" Foreground="{DynamicResource AccentBrush}"/>
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Background="Transparent" ToolTip="Cadence (rpm)">
+                                        <TextBlock Style="{DynamicResource BigNumber}" FontSize="{DynamicResource SideNumberSize}"><Run x:Name="CadenceRun" Text="–"/></TextBlock>
+                                        <Path x:Name="CadenceIcon" Width="15" Height="15" Stretch="Uniform" Margin="3,6,0,0" VerticalAlignment="Top"
+                                              Fill="{DynamicResource TextBrush}"/>
                                     </StackPanel>
                                 </StackPanel>
                             </Grid>
                         </Border>
 
-                        <!-- Rechts: Höhenprofil und Karte, wenn eine Strecke gewählt ist, darunter die weiteren Werte -->
-                        <StackPanel Grid.Column="1" Margin="10,0,0,0">
+                        <!-- Rechts: Strecke, wenn gewählt, darunter die Werte. Die Kacheln füllen genau die Höhe der linken Karte. -->
+                        <Grid Grid.Column="1" Margin="10,0,0,0">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
                             <StackPanel x:Name="RouteLoaded" Visibility="Collapsed">
                                 <DockPanel Margin="2,0,2,4">
                                     <TextBlock x:Name="GradeValue" DockPanel.Dock="Right" Style="{StaticResource Caption}"/>
@@ -188,7 +190,7 @@
                                         </Canvas>
                                     </Border>
                                     <Border Grid.Column="1" Style="{StaticResource Card}" Padding="8,5" Margin="8,0,0,0">
-                                        <Canvas Width="248" Height="72">
+                                        <Canvas Width="216" Height="72">
                                             <Polygon x:Name="ProfileArea" Fill="{DynamicResource ChipBrush}" Opacity="0.6"/>
                                             <Polygon x:Name="ProfileDoneArea" Fill="{DynamicResource ProfileFillBrush}"/>
                                             <Polyline x:Name="ProfileLine" StrokeThickness="1.5" Stroke="{DynamicResource SubtleBrush}" StrokeLineJoin="Round" Opacity="0.7"/>
@@ -199,33 +201,33 @@
                                 </Grid>
                             </StackPanel>
                             <!-- ohne Strecke 2 × 2, mit Strecke in einer Reihe -->
-                            <UniformGrid x:Name="StatsGrid" Columns="2" Margin="-3">
+                            <UniformGrid x:Name="StatsGrid" Grid.Row="1" Columns="2" Margin="-3">
                                 <Border Style="{StaticResource Card}" Padding="7,7" Margin="3">
-                                    <StackPanel>
+                                    <StackPanel VerticalAlignment="Center">
                                         <TextBlock Text="SPEED" Style="{StaticResource Caption}"/>
                                         <TextBlock Style="{StaticResource Value}" FontSize="15"><Run x:Name="SpeedRun" Text="–"/><Run Text=" km/h" FontSize="10.5"/></TextBlock>
                                     </StackPanel>
                                 </Border>
                                 <Border Style="{StaticResource Card}" Padding="7,7" Margin="3">
-                                    <StackPanel>
-                                        <TextBlock Text="DISTANZ" Style="{StaticResource Caption}"/>
+                                    <StackPanel VerticalAlignment="Center">
+                                        <TextBlock Text="DISTANCE" Style="{StaticResource Caption}"/>
                                         <TextBlock Style="{StaticResource Value}" FontSize="15"><Run x:Name="DistanceRun" Text="–"/><Run Text=" km" FontSize="10.5"/></TextBlock>
                                     </StackPanel>
                                 </Border>
                                 <Border Style="{StaticResource Card}" Padding="7,7" Margin="3">
-                                    <StackPanel>
-                                        <TextBlock Text="HÖHE" Style="{StaticResource Caption}"/>
+                                    <StackPanel VerticalAlignment="Center">
+                                        <TextBlock Text="CLIMB" Style="{StaticResource Caption}"/>
                                         <TextBlock Style="{StaticResource Value}" FontSize="15"><Run x:Name="ClimbRun" Text="–"/><Run Text=" m" FontSize="10.5"/></TextBlock>
                                     </StackPanel>
                                 </Border>
                                 <Border Style="{StaticResource Card}" Padding="7,7" Margin="3">
-                                    <StackPanel>
-                                        <TextBlock Text="FAHRZEIT" Style="{StaticResource Caption}"/>
+                                    <StackPanel VerticalAlignment="Center">
+                                        <TextBlock Text="TIME" Style="{StaticResource Caption}"/>
                                         <TextBlock x:Name="TimeValue" Style="{StaticResource Value}" FontSize="14"/>
                                     </StackPanel>
                                 </Border>
                             </UniformGrid>
-                        </StackPanel>
+                        </Grid>
                     </Grid>
 
                     <!-- ===== Strecke wählen: Datei hinzufügen oder aus der Bibliothek, rechts oben bestätigen ===== -->
@@ -235,18 +237,18 @@
                             <RowDefinition Height="*"/>
                         </Grid.RowDefinitions>
                         <DockPanel x:Name="RouteBar" Margin="0,0,0,6">
-                            <Button x:Name="ConfirmRouteButton" DockPanel.Dock="Right" Style="{StaticResource AccentButton}" Content="Strecke festlegen"
+                            <Button x:Name="ConfirmRouteButton" DockPanel.Dock="Right" Style="{StaticResource AccentButton}" Content="Use route"
                                     Padding="14,4" Margin="8,0,0,0" Click="ConfirmRoute_Click"/>
                             <Border x:Name="SourceBar" DockPanel.Dock="Right" Style="{StaticResource SegmentBar}">
                                 <StackPanel Orientation="Horizontal">
-                                    <RadioButton x:Name="OwnRoutesSegment" Style="{StaticResource Segment}" GroupName="RouteSource" Content="Eigene" IsChecked="True" Checked="RouteSource_Checked"/>
-                                    <RadioButton x:Name="AppRoutesSegment" Style="{StaticResource Segment}" GroupName="RouteSource" Content="App" Checked="RouteSource_Checked"/>
+                                    <RadioButton x:Name="OwnRoutesSegment" Style="{StaticResource Segment}" GroupName="RouteSource" Content="Mine" IsChecked="True" Checked="RouteSource_Checked"/>
+                                    <RadioButton x:Name="AppRoutesSegment" Style="{StaticResource Segment}" GroupName="RouteSource" Content="Built-in" Checked="RouteSource_Checked"/>
                                 </StackPanel>
                             </Border>
                             <Border Style="{StaticResource SegmentBar}" HorizontalAlignment="Left">
                                 <StackPanel Orientation="Horizontal">
-                                    <RadioButton x:Name="AddSegment" Style="{StaticResource Segment}" GroupName="RouteMode" Content="Hinzufügen" Checked="RouteMode_Checked"/>
-                                    <RadioButton x:Name="LibrarySegment" Style="{StaticResource Segment}" GroupName="RouteMode" Content="Bibliothek" IsChecked="True" Checked="RouteMode_Checked"/>
+                                    <RadioButton x:Name="AddSegment" Style="{StaticResource Segment}" GroupName="RouteMode" Content="Add" Checked="RouteMode_Checked"/>
+                                    <RadioButton x:Name="LibrarySegment" Style="{StaticResource Segment}" GroupName="RouteMode" Content="Library" IsChecked="True" Checked="RouteMode_Checked"/>
                                 </StackPanel>
                             </Border>
                         </DockPanel>
@@ -259,10 +261,10 @@
                                 <TextBlock Text="&#xE707;" FontFamily="{StaticResource IconFont}" FontSize="24" VerticalAlignment="Center"
                                            Foreground="{DynamicResource SubtleBrush}" Margin="0,0,14,0"/>
                                 <StackPanel VerticalAlignment="Center">
-                                    <TextBlock Text="GPX-Datei hierher ziehen" FontWeight="SemiBold" FontSize="13"/>
-                                    <TextBlock Text="Sie landet in deiner Bibliothek." Style="{StaticResource CardText}"/>
+                                    <TextBlock Text="Drop a GPX file here" FontWeight="SemiBold" FontSize="13"/>
+                                    <TextBlock Text="It goes to your library." Style="{StaticResource CardText}"/>
                                 </StackPanel>
-                                <Button Content="Datei wählen" Style="{StaticResource AccentButton}" VerticalAlignment="Center" Margin="18,0,0,0" Click="PickRouteFile_Click"/>
+                                <Button Content="Choose file" Style="{StaticResource AccentButton}" VerticalAlignment="Center" Margin="18,0,0,0" Click="PickRouteFile_Click"/>
                             </StackPanel>
                         </Grid>
 
@@ -292,7 +294,7 @@
                                 <Border x:Name="ModeChip" DockPanel.Dock="Right" CornerRadius="6" Padding="7,1" Background="{DynamicResource ChipBrush}">
                                     <TextBlock x:Name="ModeText" FontSize="10.5" FontWeight="Bold"/>
                                 </Border>
-                                <TextBlock Text="ZIELLEISTUNG" Style="{StaticResource Caption}" VerticalAlignment="Center"/>
+                                <TextBlock Text="TARGET POWER" Style="{StaticResource Caption}" VerticalAlignment="Center"/>
                             </DockPanel>
                             <Grid Margin="0,6,0,0">
                                 <Grid.ColumnDefinitions>
@@ -301,13 +303,13 @@
                                     <ColumnDefinition Width="Auto"/>
                                     <ColumnDefinition Width="230"/>
                                 </Grid.ColumnDefinitions>
-                                <Button Style="{StaticResource RoundButton}" Content="−" ToolTip="−10 W (Strg+Alt+Bild↓)" Click="PowerDown_Click" VerticalAlignment="Center"/>
+                                <Button Style="{StaticResource RoundButton}" Content="−" ToolTip="−10 W (Ctrl+Alt+PgDn)" Click="PowerDown_Click" VerticalAlignment="Center"/>
                                 <TextBlock Grid.Column="1" Style="{DynamicResource BigNumber}" HorizontalAlignment="Center" VerticalAlignment="Center">
                                     <Run x:Name="ErgRun" Text="–"/><Run Text=" W" FontSize="15"/>
                                 </TextBlock>
-                                <Button Grid.Column="2" Style="{StaticResource RoundButton}" Content="+" ToolTip="+10 W (Strg+Alt+Bild↑)" Click="PowerUp_Click" VerticalAlignment="Center"/>
+                                <Button Grid.Column="2" Style="{StaticResource RoundButton}" Content="+" ToolTip="+10 W (Ctrl+Alt+PgUp)" Click="PowerUp_Click" VerticalAlignment="Center"/>
                                 <StackPanel Grid.Column="3" Margin="16,0,0,0" VerticalAlignment="Center">
-                                    <Button x:Name="ErgToggleButton" Style="{StaticResource AccentButton}" Content="ERG starten" Click="ErgToggle_Click"/>
+                                    <Button x:Name="ErgToggleButton" Style="{StaticResource AccentButton}" Content="Start ERG" Click="ErgToggle_Click"/>
                                     <TextBlock x:Name="ErgHint" Style="{StaticResource CardText}" FontSize="10.5" HorizontalAlignment="Center"
                                                TextAlignment="Center" Margin="0,4,0,0"/>
                                 </StackPanel>
@@ -324,8 +326,8 @@
                             <DockPanel Margin="12,12,16,12" VerticalAlignment="Center">
                                 <local:Avatar x:Name="BluetoothAvatar" Width="96" Height="81" Margin="0,0,12,0"/>
                                 <StackPanel x:Name="BluetoothText" VerticalAlignment="Center">
-                                    <TextBlock Text="Bluetooth ist aus" FontSize="15" FontWeight="Bold"/>
-                                    <TextBlock Text="Hier tippen, um Bluetooth in Windows einzuschalten. Danach verbinde ich mich von selbst."
+                                    <TextBlock Text="Bluetooth is off" FontSize="15" FontWeight="Bold"/>
+                                    <TextBlock Text="Tap to turn it on. I'll connect by myself."
                                                Style="{StaticResource CardText}" FontSize="12" Margin="0,3,0,0"/>
                                 </StackPanel>
                             </DockPanel>
@@ -341,18 +343,18 @@
             <DockPanel x:Name="CompactBar" Height="36" Visibility="Collapsed" ClipToBounds="True">
                 <local:Avatar x:Name="MiniMascot" Width="38" Height="31" Margin="0,0,8,0" VerticalAlignment="Center" IsHitTestVisible="True"
                               MouseEnter="Mascot_MouseEnter" MouseLeave="Mascot_MouseLeave" MouseLeftButtonDown="Mascot_Poke"/>
-                <Button x:Name="ExpandButton" DockPanel.Dock="Right" Style="{StaticResource NavButton}" Content="&#xE70D;" ToolTip="Aufklappen"
+                <Button x:Name="ExpandButton" DockPanel.Dock="Right" Style="{StaticResource NavButton}" Content="&#xE70D;" ToolTip="Expand"
                         VerticalAlignment="Center" Click="Expand_Click"/>
                 <StackPanel x:Name="CompactValues" Orientation="Horizontal" VerticalAlignment="Center">
-                    <TextBlock Style="{DynamicResource BigNumber}" FontSize="20" VerticalAlignment="Center"><Run x:Name="MiniPowerRun" Text="–"/></TextBlock>
-                    <Path Data="M6.2,0 L0.6,8 H4.6 L3.4,14 L9.4,5.6 H5.4 Z" Width="10" Height="14" Margin="4,0,14,0" VerticalAlignment="Center"
-                          Fill="{DynamicResource AccentBrush}"/>
-                    <TextBlock Style="{StaticResource Value}" FontSize="16" VerticalAlignment="Center"><Run x:Name="MiniHeartRun" Text="–"/></TextBlock>
-                    <TextBlock Text="&#xEB52;" FontFamily="{StaticResource IconFont}" FontSize="12" Margin="4,1,14,0" VerticalAlignment="Center"
-                               Foreground="{DynamicResource NegativeBrush}"/>
-                    <TextBlock Style="{StaticResource Value}" FontSize="16" VerticalAlignment="Center"><Run x:Name="MiniCadenceRun" Text="–"/></TextBlock>
-                    <TextBlock Text="&#xE72C;" FontFamily="{StaticResource IconFont}" FontSize="12" FontWeight="Bold" Margin="4,1,0,0" VerticalAlignment="Center"
-                               Foreground="{DynamicResource AccentBrush}"/>
+                    <TextBlock Style="{DynamicResource BigNumber}" FontSize="21" VerticalAlignment="Center"><Run x:Name="MiniPowerRun" Text="–"/></TextBlock>
+                    <Path Data="M7,0 L15,0 L10,9 L16,9 L5,24 L8,13 L2,13 Z" Width="9" Height="13" Stretch="Uniform" Margin="4,0,14,0" VerticalAlignment="Center"
+                          Fill="{DynamicResource TextBrush}"/>
+                    <TextBlock Style="{DynamicResource BigNumber}" FontSize="17" VerticalAlignment="Center"><Run x:Name="MiniHeartRun" Text="–"/></TextBlock>
+                    <Path x:Name="MiniHeartIcon" Width="11" Height="10" Stretch="Uniform" Margin="3,0,14,6" VerticalAlignment="Center"
+                          Fill="{DynamicResource TextBrush}"/>
+                    <TextBlock Style="{DynamicResource BigNumber}" FontSize="17" VerticalAlignment="Center"><Run x:Name="MiniCadenceRun" Text="–"/></TextBlock>
+                    <Path x:Name="MiniCadenceIcon" Width="11" Height="11" Stretch="Uniform" Margin="3,0,0,6" VerticalAlignment="Center"
+                          Fill="{DynamicResource TextBrush}"/>
                 </StackPanel>
             </DockPanel>
 

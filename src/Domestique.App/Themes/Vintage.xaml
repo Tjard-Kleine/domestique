@@ -1,4 +1,4 @@
-<!-- Stil „Vintage“: Retro-Beige, Serifen-Zahlen, Renn-Farbstreifen (blau, rot, orange, gelb) führen in die Wattzahl. -->
+﻿<!-- Stil „Vintage“: Retro-Beige, Serifen-Zahlen, Renn-Farbstreifen (blau, rot, orange, gelb) führen in die Wattzahl. -->
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                     xmlns:sys="clr-namespace:System;assembly=mscorlib">
@@ -45,7 +45,9 @@
     <FontFamily x:Key="NumberFont">Georgia</FontFamily>
     <FontWeight x:Key="NumberWeight">Bold</FontWeight>
     <!-- helles Beige mit dunkler Schrift: fast deckend, sonst schimmert das Video grau durch -->
-    <sys:Double x:Key="HeroNumberSize">42</sys:Double>   <!-- große Wattzahl auf der Übersicht -->
+    <sys:Double x:Key="HeroNumberSize">52</sys:Double>   <!-- große Wattzahl auf der Übersicht -->
+    <sys:Double x:Key="SideNumberSize">27</sys:Double>   <!-- Puls und Kadenz neben der Wattzahl -->
+    <sys:Double x:Key="UnitSize">19</sys:Double>   <!-- das W unter dem Blitz -->
     <sys:Double x:Key="MinOpacity">0.92</sys:Double>
     <CornerRadius x:Key="ShellRadius">16</CornerRadius>
     <CornerRadius x:Key="CardRadius">8</CornerRadius>

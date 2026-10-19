@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Xml.Linq;
 
 namespace Domestique.Core.Recording;
@@ -15,7 +15,7 @@ public static class TcxWriter
 
     public static XDocument Build(IReadOnlyList<Sample> samples)
     {
-        if (samples.Count < 2) throw new ArgumentException("Zu wenige Messpunkte für eine Fahrt.", nameof(samples));
+        if (samples.Count < 2) throw new ArgumentException("Too few samples for a ride.", nameof(samples));
         Sample first = samples[0], last = samples[^1];
         bool hasCadence = samples.Any(s => s.CadenceRpm > 0);     // Trainer ohne Trittfrequenz: Feld weglassen statt 0
         double kj = 0;                                            // Arbeit in kJ, beim Radfahren etwa gleich kcal

@@ -30,7 +30,6 @@ public sealed class Avatar : FrameworkElement
     public static readonly DependencyProperty HaloProperty = Prop(nameof(Halo), 0.6);
     public static readonly DependencyProperty TintAmountProperty = Prop(nameof(TintAmount), 0);
     public static readonly DependencyProperty BadgeProperty = Prop(nameof(Badge), 0);
-    public static readonly DependencyProperty RecProperty = Prop(nameof(Rec), 0);
     public static readonly DependencyProperty FxProperty = Prop(nameof(Fx), -1);
     public static readonly DependencyProperty TintColorProperty = DependencyProperty.Register(nameof(TintColor), typeof(Color), typeof(Avatar),
         new FrameworkPropertyMetadata(Color.FromRgb(127, 180, 234), FrameworkPropertyMetadataOptions.AffectsRender));
@@ -52,7 +51,6 @@ public sealed class Avatar : FrameworkElement
     public double Halo { get => (double)GetValue(HaloProperty); set => SetValue(HaloProperty, value); }
     public double TintAmount { get => (double)GetValue(TintAmountProperty); set => SetValue(TintAmountProperty, value); }
     public double Badge { get => (double)GetValue(BadgeProperty); set => SetValue(BadgeProperty, value); }
-    public double Rec { get => (double)GetValue(RecProperty); set => SetValue(RecProperty, value); }
     public double Fx { get => (double)GetValue(FxProperty); set => SetValue(FxProperty, value); }
     public Color TintColor { get => (Color)GetValue(TintColorProperty); set => SetValue(TintColorProperty, value); }
     public Color HaloColor { get => (Color)GetValue(HaloColorProperty); set => SetValue(HaloColorProperty, value); }
@@ -64,7 +62,7 @@ public sealed class Avatar : FrameworkElement
     private Mood _mood = Mood.Search;
     private Mood? _flash;
     private BadgeKind _badgeShown;
-    private bool _hover, _busy, _done, _recording, _warning, _gear;
+    private bool _hover, _busy, _done, _warning, _gear;
     private Color? _zoneColor;
     private double _tintTarget;
     private static readonly Color SleepGray = Color.FromRgb(150, 156, 168);   // wie das Blau beim Start, nur grau
@@ -102,18 +100,6 @@ public sealed class Avatar : FrameworkElement
     public Mood Face => _flash ?? _mood;
 
     private bool IsOpenFace => Face is Mood.Idle or Mood.Search or Mood.Focus;
-
-    // Aufnahme läuft: roter Punkt oben links. Beim Start springt er auf und der Avatar hüpft einmal.
-    public bool Recording
-    {
-        set
-        {
-            if (_recording == value) return;
-            _recording = value;
-            Motion.Run(this, RecProperty, Rec, value ? 1 : 0, value ? 280 : 120, value ? Co.BackE : Co.InOutE);
-            if (value) Hop();
-        }
-    }
 
     // Sucht gerade: blaues Abzeichen mit „…“
     public bool Busy
@@ -312,7 +298,7 @@ public sealed class Avatar : FrameworkElement
         p.Sx = Sx; p.Sy = Sy; p.Ox = Ox; p.Oy = Oy; p.Tilt = Tilt;
         p.HandL = HandL; p.HandR = HandR; p.Wave = Wave;
         p.Halo = Halo; p.HaloColor = HaloColor; p.Tint = TintAmount; p.TintColor = TintColor;
-        p.Badge = Badge; p.BadgeKind = _badgeShown; p.Rec = Rec; p.Fx = Fx;
+        p.Badge = Badge; p.BadgeKind = _badgeShown; p.Fx = Fx;
         return p;
     }
 

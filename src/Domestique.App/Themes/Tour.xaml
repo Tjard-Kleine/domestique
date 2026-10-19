@@ -1,4 +1,4 @@
-<!-- Stil „Tour“: TV-Grafik der großen Rundfahrten. Nachtblau, Maillot-Gelb, schmale kursive Zahlen, gelber Balken. -->
+﻿<!-- Stil „Tour“: TV-Grafik der großen Rundfahrten. Nachtblau, Maillot-Gelb, schmale kursive Zahlen, gelber Balken. -->
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                     xmlns:sys="clr-namespace:System;assembly=mscorlib">
@@ -44,7 +44,9 @@
     <FontFamily x:Key="LabelFont">Bahnschrift</FontFamily>
     <FontFamily x:Key="NumberFont">Bahnschrift</FontFamily>
     <FontWeight x:Key="NumberWeight">Bold</FontWeight>
-    <sys:Double x:Key="HeroNumberSize">52</sys:Double>   <!-- große Wattzahl auf der Übersicht -->
+    <sys:Double x:Key="HeroNumberSize">64</sys:Double>   <!-- große Wattzahl auf der Übersicht -->
+    <sys:Double x:Key="SideNumberSize">32</sys:Double>   <!-- Puls und Kadenz neben der Wattzahl -->
+    <sys:Double x:Key="UnitSize">22</sys:Double>   <!-- das W unter dem Blitz -->
     <sys:Double x:Key="MinOpacity">0.2</sys:Double>
     <CornerRadius x:Key="ShellRadius">14</CornerRadius>
     <CornerRadius x:Key="CardRadius">8</CornerRadius>

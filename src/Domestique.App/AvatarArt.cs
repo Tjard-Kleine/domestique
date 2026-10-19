@@ -17,7 +17,7 @@ internal sealed class AvatarPose
     public double Sx = 1, Sy = 1, Ox, Oy, Tilt;          // Stauchen, Versatz, Neigung (rad)
     public double HandL, HandR, Wave = -1;               // Hände 0…1, Winken: Sekunden seit Beginn, −1 = nicht
     public double Halo = 0.6, HaloSpread = 0.72;        // Schein: Stärke und Größe (1 = so weit wie beim Start)
-    public double Tint, Badge, Rec, Fx = -1;            // Fx: Sekunden seit Herzchen, −1 = keine
+    public double Tint, Badge, Fx = -1;                 // Fx: Sekunden seit Herzchen, −1 = keine
     public Color HaloColor = Colors.White, TintColor = Color.FromRgb(127, 180, 234);
     public BadgeKind BadgeKind;
 
@@ -38,7 +38,6 @@ internal sealed class AvatarPose
         p.Tint = L(a.Tint, b.Tint, k); p.TintColor = C(a.TintColor, b.TintColor, k);
         p.BadgeKind = b.BadgeKind != BadgeKind.None ? b.BadgeKind : a.BadgeKind;
         p.Badge = L(a.BadgeKind == p.BadgeKind ? a.Badge : 0, b.Badge, k);
-        p.Rec = L(a.Rec, b.Rec, k);
         return p;
     }
 }
@@ -64,7 +63,6 @@ internal static class AvatarArt
     private static readonly Brush DoneBrush = Frozen(new SolidColorBrush(Color.FromRgb(0x34, 0xD3, 0x99)));
     private static readonly Brush WarningBrush = Frozen(new SolidColorBrush(Color.FromRgb(0xF5, 0xA5, 0x24)));
     private static readonly Brush GearBrush = Frozen(new SolidColorBrush(Color.FromRgb(0x8A, 0x90, 0x9C)));
-    private static readonly Brush RecBrush = Frozen(new SolidColorBrush(Color.FromRgb(0xF4, 0x50, 0x5E)));
     private static readonly Brush ZBrush = Frozen(new SolidColorBrush(Color.FromArgb(0xC0, 0xB8, 0xC0, 0xD0)));
 
     // Größe des Körpers in einem Feld der Größe w × h und sein Mittelpunkt
@@ -101,13 +99,6 @@ internal static class AvatarArt
         DrawFace(dc, p, hw, hh, pixelsPerDip);
 
         if (p.Badge > 0.01 && p.BadgeKind != BadgeKind.None) DrawBadge(dc, p, hw, hh);
-        else if (p.Rec > 0.01)
-        {
-            double r = hh * 0.2 * p.Rec;
-            var o = new Point(-hw * 0.82, -hh * 0.82);
-            dc.DrawEllipse(Ring, null, o, r + hh * 0.07 * p.Rec, r + hh * 0.07 * p.Rec);
-            dc.DrawEllipse(RecBrush, null, o, r, r);
-        }
         dc.Pop(); dc.Pop(); dc.Pop();
 
         if (p.Fx >= 0) DrawHearts(dc, p.Fx, at, hw, hh);

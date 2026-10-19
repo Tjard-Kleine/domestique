@@ -1,4 +1,5 @@
 ﻿using System.ComponentModel;
+using System.Globalization;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
@@ -165,14 +166,16 @@ public partial class SettingsWindow : Window
         if (cda) _s.CdA = cdaM2;
         _s.Difficulty = DifficultySlider.Value / 100;
         RiderError.Visibility = Show(!(ftp && rider && bike && cda));
-        RiderError.Text = "Rot markierte Felder werden nicht übernommen. Erlaubt: FTP 50–600 W, Fahrer 30–200 kg, Rad 3–40 kg, CdA 0,15–0,6 m².";
+        RiderError.Text = "Red fields aren't saved. Allowed: FTP 50–600 W, rider 30–200 kg, bike 3–40 kg, CdA 0.15–0.6 m².";
         _main.ApplySettings();
         ScheduleSave();
     }
 
     private static bool Check(TextBox box, double min, double max, out double value)
     {
-        bool ok = double.TryParse(box.Text, out value) && value >= min && value <= max;
+        // Komma und Punkt als Dezimaltrenner, egal wie Windows eingestellt ist
+        bool ok = double.TryParse(box.Text.Trim().Replace(',', '.'), NumberStyles.Float, CultureInfo.InvariantCulture, out value)
+                  && value >= min && value <= max;
         box.Tag = ok ? null : "invalid";
         return ok;
     }
@@ -219,19 +222,19 @@ public partial class SettingsWindow : Window
 
     private async Task ScanAsync(Guid service)
     {
-        BleInfo.Text = "Suche 8 Sekunden …";
+        BleInfo.Text = "Searching for 8 s …";
         DeviceList.ItemsSource = null;
         DeviceEmpty.Visibility = Visibility.Collapsed;
         try
         {
             Guid? filter = AllDevicesBox.IsChecked == true ? null : service;
             var devices = await BleScan.ScanAllAsync(filter, TimeSpan.FromSeconds(8));
-            DeviceList.ItemsSource = devices.OrderBy(d => d.Name == "Unbenannt").ThenBy(d => d.Name)
-                .Select(d => new DeviceItem(d.Address, d.Name, $"Adresse {d.Address:X12}")).ToList();
+            DeviceList.ItemsSource = devices.OrderBy(d => d.Name == "Unnamed").ThenBy(d => d.Name)
+                .Select(d => new DeviceItem(d.Address, d.Name, $"Address {d.Address:X12}")).ToList();
             DeviceEmpty.Visibility = Show(devices.Count == 0);
             BleInfo.Text = devices.Count == 0
-                ? "Nichts gefunden. Hersteller-App und Zwift geschlossen? Ein gerade verbundenes Gerät funkt meist nicht."
-                : "Gerät antippen, dann als Trainer oder Pulsgurt speichern.";
+                ? "Nothing found. Close other apps using the device."
+                : "Tap a device, then save it as trainer or HR strap.";
         }
         catch (Exception ex) { BleInfo.Text = ex.Message; }
     }
@@ -254,9 +257,9 @@ public partial class SettingsWindow : Window
         _s.Remember(address, name, kind);
         _s.Save();
         RefreshMyDevices();
-        BleInfo.Text = $"Verbinde {kind} …";
+        BleInfo.Text = "Connecting …";
         bool ok = trainer ? await _main.ReconnectTrainerAsync() : await _main.ReconnectStrapAsync();
-        BleInfo.Text = ok ? $"{name} ist verbunden." : "Verbindung klappt noch nicht, die App versucht es weiter.";
+        BleInfo.Text = ok ? $"{name} connected." : "Not connected yet. I'll keep trying.";
         RefreshStatus();
     }
 
@@ -271,12 +274,12 @@ public partial class SettingsWindow : Window
 
     private void Import_Click(object sender, RoutedEventArgs e)
     {
-        var dialog = new Microsoft.Win32.OpenFileDialog { Filter = "GPX-Strecken (*.gpx)|*.gpx", Multiselect = true };
+        var dialog = new Microsoft.Win32.OpenFileDialog { Filter = "GPX routes (*.gpx)|*.gpx", Multiselect = true };
         if (dialog.ShowDialog(this) != true) return;
         foreach (var file in dialog.FileNames)
         {
             try { _library.Import(file); }
-            catch (Exception ex) { MessageBox.Show(this, $"{Path.GetFileName(file)}: {ex.Message}", "Import fehlgeschlagen"); }
+            catch (Exception ex) { MessageBox.Show(this, $"{Path.GetFileName(file)}: {ex.Message}", "Import failed"); }
         }
         RefreshLibrary();
     }
@@ -289,9 +292,9 @@ public partial class SettingsWindow : Window
     private void Delete_Click(object sender, RoutedEventArgs e)
     {
         if (LibraryList.SelectedItem is not LibraryItem item) return;
-        if (MessageBox.Show(this, item.Label + " löschen?", "Bibliothek", MessageBoxButton.YesNo) != MessageBoxResult.Yes) return;
+        if (MessageBox.Show(this, $"Delete {item.Label}?", "Library", MessageBoxButton.YesNo) != MessageBoxResult.Yes) return;
         try { _library.Delete(item.FilePath); }
-        catch (Exception ex) { MessageBox.Show(this, ex.Message, "Löschen fehlgeschlagen"); }
+        catch (Exception ex) { MessageBox.Show(this, ex.Message, "Delete failed"); }
         RefreshLibrary();
     }
 
@@ -335,6 +338,7 @@ public sealed class MyDeviceItem(SavedDevice device) : INotifyPropertyChanged
     public SavedDevice Device { get; } = device;
     public string Name => Device.Name;
     public string Kind => Device.Kind;
+    public string KindLabel => Device.Kind == "Trainer" ? "Trainer" : "HR strap";   // Kind bleibt als Schlüssel in settings.json
     public string Icon => Device.Kind == "Trainer" ? "" : "";
     public event PropertyChangedEventHandler? PropertyChanged;
 
