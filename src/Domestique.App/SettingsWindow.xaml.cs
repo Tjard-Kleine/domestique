@@ -37,6 +37,8 @@ public partial class SettingsWindow : Window
         if (main.IsVisible) Owner = main;                                     // bleibt über dem Overlay und schließt mit ihm
         _save.Tick += (_, _) => { _save.Stop(); _s.Save(); };
         _status.Tick += (_, _) => RefreshStatus();
+        // Streifen der Vintage-Vorschau an den runden Ecken abschneiden
+        VintagePreview.SizeChanged += (_, e) => VintagePreview.Clip = new RectangleGeometry(new Rect(e.NewSize), 9, 9);
 
         StandardTile.IsChecked = _s.Theme == "Standard";
         TourTile.IsChecked = _s.Theme == "Tour";
@@ -50,6 +52,9 @@ public partial class SettingsWindow : Window
         BikeBox.Text = _s.BikeKg.ToString();
         CdaBox.Text = _s.CdA.ToString();
         DifficultySlider.Value = _s.Difficulty * 100;
+        foreach (CheckBox chip in CompactChips.Children) chip.IsChecked = _s.CompactValues.Contains((string)chip.Tag);
+        HotkeyList.ItemsSource = _hotkeys;
+        RefreshHotkeys();
         UpdateValueLabels();
         RefreshLibrary();
         RefreshMyDevices();
@@ -60,7 +65,12 @@ public partial class SettingsWindow : Window
         _loading = false;
         Popover.Opacity = 0;                                                  // unsichtbar bis zum ersten Bild, dann aufspringen
         ContentRendered += (_, _) => PlayOpen();
-        Closed += (_, _) => { _status.Stop(); if (_save.IsEnabled) { _save.Stop(); _s.Save(); } };
+        Closed += (_, _) =>
+        {
+            _status.Stop();
+            if (_recording is not null) _main.ApplyHotkeys();                 // mitten im Aufnehmen geschlossen: Kürzel wieder an
+            if (_save.IsEnabled) { _save.Stop(); _s.Save(); }
+        };
     }
 
     // Öffnen wie ein Popover aus dem Zahnrad: wächst etwas über seine Größe hinaus und schnappt zurück,
@@ -89,14 +99,17 @@ public partial class SettingsWindow : Window
         RiderPage.Visibility = Show(RiderTab.IsChecked == true);
         BluetoothPage.Visibility = Show(BluetoothTab.IsChecked == true);
         LibraryPage.Visibility = Show(LibraryTab.IsChecked == true);
+        KeysPage.Visibility = Show(KeysTab.IsChecked == true);
         if (BluetoothTab.IsChecked == true) { RefreshStatus(); _status.Start(); } else _status.Stop();
+        if (KeysTab.IsChecked == true) RefreshHotkeys();                      // z. B. inzwischen von einer anderen App belegt
         if (!IsLoaded) return;                                                // Öffnen zeigt die Seite ohnehin an
         Motion.Reveal(PageItems(CurrentPage), 30, 30, rise: true);
         MovePill(animate: true);
     }
 
     private FrameworkElement CurrentPage =>
-        RiderTab.IsChecked == true ? RiderPage : BluetoothTab.IsChecked == true ? BluetoothPage : LibraryTab.IsChecked == true ? LibraryPage : LookPage;
+        RiderTab.IsChecked == true ? RiderPage : BluetoothTab.IsChecked == true ? BluetoothPage : LibraryTab.IsChecked == true ? LibraryPage
+        : KeysTab.IsChecked == true ? KeysPage : LookPage;
 
     // Karten einer Seite in der Reihenfolge, in der sie erscheinen
     private static IEnumerable<UIElement> PageItems(FrameworkElement page) => page switch
@@ -109,7 +122,7 @@ public partial class SettingsWindow : Window
     // gleitet unter den gewählten Reiter und streckt sich unterwegs
     private void MovePill(bool animate)
     {
-        var tabs = new[] { LookTab, RiderTab, BluetoothTab, LibraryTab };
+        var tabs = new[] { LookTab, RiderTab, BluetoothTab, LibraryTab, KeysTab };
         double step = LookTab.ActualWidth, x = Array.FindIndex(tabs, t => t.IsChecked == true) * step;
         TabPill.Width = Math.Max(0, step - 6);
         var shift = Motion.Shift(TabPill);
@@ -144,6 +157,110 @@ public partial class SettingsWindow : Window
     }
 
     private void ResetPosition_Click(object sender, RoutedEventArgs e) => _main.ResetPosition();
+
+    // Werte der kleinen Notch in fester Reihenfolge; die Notch passt ihre Breite an
+    private void CompactChip_Click(object sender, RoutedEventArgs e)
+    {
+        _s.CompactValues = CompactChips.Children.OfType<CheckBox>().Where(c => c.IsChecked == true).Select(c => (string)c.Tag).ToList();
+        _main.ApplySettings();
+        ScheduleSave();
+    }
+
+    // ---------- Tastenkürzel ----------
+
+    private readonly List<HotkeyItem> _hotkeys = Hotkeys.All.Select(h => new HotkeyItem(h.Action, h.Label)).ToList();
+    private HotkeyItem? _recording;
+
+    // Kürzel und Hinweise: von einer anderen App belegt, blockiert ein Zeichen der Tastatur, oder keins gesetzt
+    private void RefreshHotkeys()
+    {
+        foreach (var item in _hotkeys)
+        {
+            if (item == _recording) continue;
+            var combo = Hotkeys.Get(_s, item.Action);
+            item.Keys = combo?.Display ?? "None";
+            string? blocked = combo is { } c && c.Modifiers.HasFlag(ModifierKeys.Control) && c.Modifiers.HasFlag(ModifierKeys.Alt)
+                ? Native.AltGrCharacter(c.VirtualKey, c.Modifiers.HasFlag(ModifierKeys.Shift)) : null;
+            item.SetNote(combo is null ? "" : !_main.HotkeyWorks(item.Action) ? "Used by another app. Pick another one."
+                : blocked is not null ? $"Blocks “{blocked}” on your keyboard." : "", warn: true);
+        }
+    }
+
+    private void HotkeyButton_Click(object sender, RoutedEventArgs e)
+    {
+        var button = (Button)sender;
+        if (button.DataContext is not HotkeyItem item || item == _recording) return;
+        if (_recording is not null) StopRecording();
+        _recording = item;
+        _main.SuspendHotkeys();                                               // sonst löst das alte Kürzel die Aktion aus
+        item.Recording = true;
+        item.Keys = "Press keys …";
+        item.SetNote("Esc cancels · Delete removes", warn: false);
+        button.Focus();
+    }
+
+    private void HotkeyButton_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (_recording is not { } item || ((FrameworkElement)sender).DataContext != item) return;
+        e.Handled = true;                                                     // keine Taste löst den Knopf oder das Fenster aus
+        var key = e.Key == Key.System ? e.SystemKey : e.Key == Key.ImeProcessed ? e.ImeProcessedKey : e.Key;
+        var mods = Keyboard.Modifiers;
+        if (key is Key.LeftCtrl or Key.RightCtrl or Key.LeftAlt or Key.RightAlt or Key.LeftShift or Key.RightShift or Key.LWin or Key.RWin)
+        {
+            item.Keys = mods == ModifierKeys.None ? "Press keys …" : KeyCombo.ModifierText(mods) + "+ …";   // zeigt, was schon gedrückt ist
+            return;
+        }
+        if (mods == ModifierKeys.None && key == Key.Escape) { StopRecording(); return; }
+        if (mods == ModifierKeys.None && key is Key.Delete or Key.Back)
+        {
+            if (item.Action == HotkeyAction.ClickThrough) { item.SetNote("Click-through needs a shortcut: it's the only way back.", warn: true); return; }
+            Hotkeys.Set(_s, item.Action, null);
+            StopRecording();
+            return;
+        }
+        // nur mit Strg, Alt oder Win: Einzelne Tasten würden in allen Apps fehlen
+        if ((mods & (ModifierKeys.Control | ModifierKeys.Alt | ModifierKeys.Windows)) == 0)
+        {
+            item.SetNote("Use it with Ctrl, Alt or Win.", warn: true);
+            return;
+        }
+        var combo = new KeyCombo(mods, key);
+        var taken = Hotkeys.All.FirstOrDefault(h => h.Action != item.Action && Hotkeys.Get(_s, h.Action) == combo);
+        if (taken.Label is not null) { item.SetNote($"Already used for “{taken.Label}”.", warn: true); return; }
+        Hotkeys.Set(_s, item.Action, combo);
+        StopRecording();
+    }
+
+    // Leertaste und Enter lösen einen Knopf beim Loslassen aus: während des Aufnehmens nicht
+    private void HotkeyButton_PreviewKeyUp(object sender, KeyEventArgs e)
+    {
+        if (_recording is not null) e.Handled = true;
+    }
+
+    private void HotkeyButton_LostKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
+    {
+        if (_recording is not null && ((FrameworkElement)sender).DataContext == _recording) StopRecording();
+    }
+
+    // Aufnehmen beenden: Kürzel wieder anmelden, Liste mit Hinweisen auffrischen
+    private void StopRecording()
+    {
+        if (_recording is null) return;
+        _recording.Recording = false;
+        _recording = null;
+        _main.ApplyHotkeys();
+        RefreshHotkeys();
+        ScheduleSave();
+    }
+
+    private void ResetHotkeys_Click(object sender, RoutedEventArgs e)
+    {
+        if (_recording is not null) { _recording.Recording = false; _recording = null; }
+        _s.Hotkeys.Clear();
+        _main.ApplyHotkeys();
+        RefreshHotkeys();
+        ScheduleSave();
+    }
 
     private void UpdateValueLabels()
     {
@@ -329,6 +446,44 @@ public partial class SettingsWindow : Window
         _closingAnimated = true;
         Motion.PopOut(Popover, 0.92, 170, Close);
     }
+}
+
+// Zeile unter „Shortcuts“: Aktion, Kürzel und ein Hinweis darunter (Warnung in Gelb)
+public sealed class HotkeyItem(HotkeyAction action, string label) : INotifyPropertyChanged
+{
+    private string _keys = "", _note = "";
+    private bool _recording, _warn;
+    public HotkeyAction Action { get; } = action;
+    public string Label { get; } = label;
+    public event PropertyChangedEventHandler? PropertyChanged;
+
+    public string Keys { get => _keys; set => Set(ref _keys, value); }
+    public string Note => _note;
+    public bool HasNote => _note.Length > 0;
+    public bool Warn => _warn;
+    public string? RecordingTag => _recording ? "recording" : null;
+
+    public bool Recording
+    {
+        get => _recording;
+        set { _recording = value; Changed(nameof(RecordingTag)); }
+    }
+
+    public void SetNote(string note, bool warn)
+    {
+        _note = note;
+        _warn = warn;
+        Changed(nameof(Note)); Changed(nameof(HasNote)); Changed(nameof(Warn));
+    }
+
+    private void Set(ref string field, string value, [System.Runtime.CompilerServices.CallerMemberName] string name = "")
+    {
+        if (field == value) return;
+        field = value;
+        Changed(name);
+    }
+
+    private void Changed(string name) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
 }
 
 // Eintrag unter „Meine Geräte“. IsConnected meldet Änderungen, damit die Liste nicht neu aufgebaut werden muss.

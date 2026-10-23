@@ -267,6 +267,65 @@
         </Setter>
     </Style>
 
+    <!-- ===== Auswahl-Chip: an/aus, an im Akzent (z. B. Werte der kleinen Notch) ===== -->
+
+    <Style x:Key="Chip" TargetType="CheckBox">
+        <Setter Property="Foreground" Value="{DynamicResource SubtleBrush}"/>
+        <Setter Property="FontSize" Value="11.5"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+        <Setter Property="Margin" Value="0,0,6,6"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="CheckBox">
+                    <Border x:Name="Bg" CornerRadius="11" Padding="10,4" Background="{DynamicResource ChipBrush}">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
+                        </Trigger>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="Bg" Property="Background" Value="{DynamicResource AccentBrush}"/>
+                            <Setter Property="Foreground" Value="{DynamicResource OnAccentBrush}"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ===== Tastenkürzel: Feld mit der Kombination; Tag="recording" während man die neuen Tasten drückt ===== -->
+
+    <Style x:Key="KeyButton" TargetType="Button">
+        <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
+        <Setter Property="FontSize" Value="11.5"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="MinWidth" Value="124"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="Bg" CornerRadius="8" Padding="10,6" Background="{DynamicResource ChipBrush}"
+                            BorderBrush="Transparent" BorderThickness="1.5">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bg" Property="Background" Value="{DynamicResource CardHoverBrush}"/>
+                        </Trigger>
+                        <Trigger Property="Tag" Value="recording">
+                            <Setter TargetName="Bg" Property="Background" Value="{DynamicResource AccentSoftBrush}"/>
+                            <Setter TargetName="Bg" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <!-- ===== Regler: schmale Spur, gefüllter Anteil im Akzent, runder Knopf ===== -->
 
     <Style x:Key="SliderFill" TargetType="RepeatButton">

@@ -27,7 +27,26 @@ internal static class Native
     [DllImport("user32.dll")] private static extern IntPtr MonitorFromWindow(IntPtr hWnd, uint flags);
     [DllImport("user32.dll")] private static extern bool GetMonitorInfo(IntPtr monitor, ref MonitorInfo info);
 
+    [DllImport("user32.dll")] private static extern int ToUnicodeEx(uint vk, uint scan, byte[] state, [Out] char[] buffer, int size, uint flags, IntPtr layout);
+    [DllImport("user32.dll")] private static extern uint MapVirtualKeyEx(uint code, uint mapType, IntPtr layout);
+    [DllImport("user32.dll")] private static extern IntPtr GetKeyboardLayout(uint thread);
+
     [StructLayout(LayoutKind.Sequential)] private struct NativeRect { public int Left, Top, Right, Bottom; }
+
+    // Zeichen, das Strg+Alt (= AltGr) mit dieser Taste auf der aktuellen Tastatur tippt, z. B. „€“ für E auf deutschen
+    // Tastaturen. Ein Kürzel darauf würde das Zeichen in allen Apps blockieren. null, wenn die Kombination nichts tippt.
+    public static string? AltGrCharacter(uint vk, bool shift)
+    {
+        var layout = GetKeyboardLayout(0);
+        var state = new byte[256];
+        state[0x11] = state[0x12] = state[0xA2] = state[0xA5] = 0x80;          // Strg, Alt, linke Strg, rechte Alt (AltGr)
+        if (shift) state[0x10] = 0x80;
+        var buffer = new char[4];
+        int n = ToUnicodeEx(vk, MapVirtualKeyEx(vk, 0, layout), state, buffer, buffer.Length, 0x4, layout);   // 0x4: Tastaturzustand nicht ändern
+        if (n == 0) return null;
+        var text = new string(buffer, 0, Math.Abs(n));
+        return text.All(c => char.IsControl(c) || char.IsWhiteSpace(c)) ? null : text;
+    }
     [StructLayout(LayoutKind.Sequential)] private struct MonitorInfo { public int Size; public NativeRect Monitor, Work; public uint Flags; }
 
     public static IntPtr Handle(Window w) => new WindowInteropHelper(w).Handle;

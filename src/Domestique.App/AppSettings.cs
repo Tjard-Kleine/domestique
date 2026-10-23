@@ -34,6 +34,9 @@ public sealed class AppSettings
     public double Scale { get; set; } = 1.0;
     public bool ShowMap { get; set; } = true;
     public bool NotchDock { get; set; } = true;     // am oberen Rand andocken erlaubt
+    public Dictionary<string, string> Hotkeys { get; set; } = [];        // nur geänderte Kürzel, sonst gilt der Standard
+    // Werte der kleinen Notch in dieser Reihenfolge: Power, HeartRate, Cadence, Speed, Distance, Climb, Time
+    public List<string> CompactValues { get; set; } = ["Power", "HeartRate", "Cadence", "Speed", "Distance"];
 
     private static readonly string FilePath = Path.Combine(Folder, "settings.json");
 

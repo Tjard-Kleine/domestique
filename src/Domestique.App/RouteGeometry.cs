@@ -20,15 +20,6 @@ internal static class RouteGeometry
         return Frozen(r, project);
     }
 
-    // Höhenprofil: Distanz nach rechts, Höhe nach oben.
-    public static PointCollection Profile(Route r, double w, double h, out Func<RoutePoint, Point> project)
-    {
-        double minE = r.Points.Min(p => p.ElevationM), maxE = r.Points.Max(p => p.ElevationM);
-        double range = Math.Max(maxE - minE, 1), length = r.Points[^1].DistanceM;
-        project = p => new Point(p.DistanceM / length * w, h - (p.ElevationM - minE) / range * h);
-        return Frozen(r, project);
-    }
-
     // Gefahrener Teil: die Linienpunkte bis zur aktuellen Position, dazu die Position selbst.
     // Die Linie hat einen Punkt alle 10 Rasterpunkte, daraus ergibt sich die Anzahl ohne Suchen.
     public static PointCollection Done(PointCollection line, Route r, double distanceM, Func<RoutePoint, Point> project)
@@ -40,14 +31,6 @@ internal static class RouteGeometry
         done.Add(project(r.At(distanceM)));
         done.Freeze();
         return done;
-    }
-
-    // Fläche unter dem Höhenprofil: die Linie plus die beiden unteren Ecken
-    public static PointCollection Area(PointCollection profile, double h)
-    {
-        var area = new PointCollection(profile) { new Point(profile[^1].X, h), new Point(profile[0].X, h) };
-        area.Freeze();
-        return area;
     }
 
     private static PointCollection Frozen(Route r, Func<RoutePoint, Point> project)

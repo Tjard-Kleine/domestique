@@ -21,15 +21,13 @@ namespace Domestique.App;
 
 public partial class MainWindow : Window
 {
-    private const int HotkeyClickThrough = 1;                 // Strg+Alt+D
-    private const int HotkeyPowerUp = 2, HotkeyPowerDown = 3; // Strg+Alt+Bild↑ / Bild↓
-    private const int HotkeyEndErg = 4;                       // Strg+Alt+Ende (nicht E: AltGr+E ist das €-Zeichen)
-    private const int HotkeySettings = 6;                     // Strg+Alt+O
-    private const double BaseWidth = 748;                     // 720 Panel + 2 × 14 Notch-Ohren
+    private const double HudW = 401, MapW = 328;              // Notch wie im Entwurf; ausgeklappt kommt die Karte (8 + 320) dazu
+    private const double BaseWidth = HudW + MapW + 28 + 16;   // + 2 × 14 Notch-Ohren + Platz zum Nachfedern der Breite
     private const double SnapDistance = 28, CenterSnap = 90;  // Andocken am oberen Rand, Einrasten in der Mitte
     private const double Overhang = 12;                       // durchsichtiger Rand unten (Root.Margin): Platz zum Nachfedern
     private const double TabStep = 36;                        // Breite eines Tabs in der Kopfzeile samt Abstand
-    private const double CompactW = 288, CompactH = 36, CompactR = 14;   // minimierte Notch (wie Coucou kompakt)
+    private const double StartW = 288;                        // kleine Pille, aus der die Notch beim Start aufgeht (wie Coucou kompakt)
+    private const double CompactH = 36, CompactR = 14;        // minimierte Notch; ihre Breite hängt an den gewählten Werten
     private const double NotchW = 184;                        // so schmal zieht sie sich beim Beenden in den Rand zurück
     private static readonly TimeSpan StaleAfter = TimeSpan.FromSeconds(3);
     private static readonly string RidesFolder = Path.Combine(
@@ -52,16 +50,18 @@ public partial class MainWindow : Window
     private readonly RouteSim _sim = new(new RiderPhysics());
     private readonly GradeLimiter _limiter = new();
     private readonly RideRecorder _ride = new(RidesFolder);
-    private readonly Counter _ergCounter = new();                         // ERG-Ziel zählt bei ± weich zum neuen Wert
+    private readonly Dictionary<HotkeyAction, bool> _hotkeyOk = [];      // false: eine andere App hat das Kürzel schon
     private readonly List<long> _pokes = new();                           // Zeitpunkte der letzten Klapse auf den Avatar
     private readonly Island _island;
-    private bool _greeting, _compact, _anchorTop, _switching;
+    private readonly Tracked _shellWidth = new(HudW);                     // Breite beim Aus- und Einklappen der Karte
+    private readonly FrameLoop _widthLoop;
+    private bool _greeting, _compact, _anchorTop, _switching, _mapOpen, _riding;
     private Color _surface;                                        // Hintergrund mit eingestellter Deckkraft
     private bool _opaque = true;                                   // ganz deckend, solange kein Trainer verbunden ist
     private BleTrainer? _trainer;
     private BleHeartRate? _strap;
     private SettingsWindow? _settingsWindow;
-    private Func<RoutePoint, Point>? _mapProject, _profileProject;
+    private Func<RoutePoint, Point>? _mapProject;
     private bool _clickThrough, _closing, _trainerLoop, _strapLoop, _connectingTrainer, _connectingStrap;
     private bool _wasConnected, _everConnected, _hadControl, _controlLost, _strapWas, _wasFinished, _dockCentered;
     private string _message = "Searching for trainer …";
@@ -78,9 +78,20 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        BoltIcon.Data = MiniBoltIcon.Data = Icons.Bolt;
         HeartIcon.Data = MiniHeartIcon.Data = Icons.HeartPulse;
         CadenceIcon.Data = MiniCadenceIcon.Data = Icons.Crank;
-        _ergCounter.Display = v => ErgRun.Text = $"{v:0}";
+        SpeedIcon.Data = MiniSpeedIcon.Data = Icons.Speed;
+        DistanceIcon.Data = MiniDistanceIcon.Data = Icons.Distance;
+        ClimbIcon.Data = MiniClimbIcon.Data = Icons.Climb;
+        TimeIcon.Data = MiniTimeIcon.Data = Icons.Clock;
+        _widthLoop = new FrameLoop((dt, now) =>
+        {
+            _shellWidth.Step(dt, now);
+            Shell.Width = _shellWidth.Value;
+            return _shellWidth.Animating;
+        });
+        Ride.Landing += Ride_Landing;
         _guard = new ModeGuard(command => _trainer?.Control?.SetTarget(command));
         _timer.Tick += (_, _) => OnTick();
         _noticeTimer.Tick += (_, _) => { _noticeTimer.Stop(); Motion.Run(NoticeBar, OpacityProperty, NoticeBar.Opacity, 0, 350, Co.InOutE); };
@@ -102,9 +113,9 @@ public partial class MainWindow : Window
         };
         MouseMove += (_, e) => ActiveMascot.LookAt(e.GetPosition(ActiveMascot));   // Augen folgen der Maus
         MouseLeave += (_, _) => ActiveMascot.LookAhead();
-        // Streckenauswahl und ERG sind so hoch wie die Übersicht (die Liste scrollt), statt das Fenster zu vergrößern.
+        // Die Streckenauswahl ist so hoch wie die Übersicht (die Liste scrollt), statt das Fenster zu vergrößern.
         // Die Übersicht ist oben ausgerichtet, ihre Höhe ist also ihre echte Höhe: Das Fenster schrumpft auch wieder.
-        HomeView.SizeChanged += (_, _) => RouteView.Height = ErgView.Height = HomeView.ActualHeight;
+        HomeView.SizeChanged += (_, _) => RouteView.Height = HomeView.ActualHeight;
     }
 
     public string TrainerStatus => _trainer is { } t && _state.Current.Connected ? $"{t.Name} · connected" : _message;
@@ -121,19 +132,61 @@ public partial class MainWindow : Window
     protected override void OnSourceInitialized(EventArgs e)
     {
         base.OnSourceInitialized(e);
-        var hwnd = Native.Handle(this);
-        HwndSource.FromHwnd(hwnd).AddHook(WndProc);
-        RegisterHotkey(hwnd, HotkeyClickThrough, 0x44);       // D
-        RegisterHotkey(hwnd, HotkeyPowerUp, 0x21);            // Bild↑ (nicht Pfeiltasten: drehen bei manchen Treibern den Bildschirm)
-        RegisterHotkey(hwnd, HotkeyPowerDown, 0x22);          // Bild↓
-        RegisterHotkey(hwnd, HotkeyEndErg, 0x23);             // Ende
-        RegisterHotkey(hwnd, HotkeySettings, 0x4F);           // O
+        HwndSource.FromHwnd(Native.Handle(this)).AddHook(WndProc);
+        ApplyHotkeys();
     }
 
-    private static void RegisterHotkey(IntPtr hwnd, int id, uint key)
+    // ---------- Tastenkürzel ----------
+
+    // Meldet alle Kürzel (neu) bei Windows an. Belegt eine andere App eins, bleibt es aus und die Einstellungen sagen es.
+    public void ApplyHotkeys()
     {
-        if (!Native.RegisterHotKey(hwnd, id, Native.MOD_CONTROL | Native.MOD_ALT, key))
-            RawLog.Note($"Hotkey Ctrl+Alt+0x{key:X2} is used by another app");
+        var hwnd = Native.Handle(this);
+        if (hwnd == IntPtr.Zero) return;
+        foreach (var (action, _, _) in Hotkeys.All)
+        {
+            Native.UnregisterHotKey(hwnd, (int)action);
+            if (Hotkeys.Get(_settings, action) is not { } combo) { _hotkeyOk[action] = true; continue; }
+            bool ok = Native.RegisterHotKey(hwnd, (int)action, combo.NativeModifiers | Hotkeys.Repeat(action), combo.VirtualKey);
+            if (!ok && _hotkeyOk.GetValueOrDefault(action, true)) RawLog.Note($"Hotkey {combo} is used by another app");
+            _hotkeyOk[action] = ok;
+        }
+        UpdateShortcutTexts();
+    }
+
+    // Während man in den Einstellungen ein neues Kürzel drückt: alle kurz abmelden, sonst löst die Taste die Aktion aus
+    public void SuspendHotkeys()
+    {
+        var hwnd = Native.Handle(this);
+        foreach (var (action, _, _) in Hotkeys.All) Native.UnregisterHotKey(hwnd, (int)action);
+    }
+
+    public bool HotkeyWorks(HotkeyAction action) => Hotkeys.Get(_settings, action) is not null && _hotkeyOk.GetValueOrDefault(action, true);
+
+    // „Settings“ → „Settings (Ctrl+Alt+S)“, ohne Kürzel nur der Name
+    private string WithKeys(string text, HotkeyAction action) =>
+        HotkeyWorks(action) ? $"{text} ({Hotkeys.Text(_settings, action)})" : text;
+
+    // Tooltips nennen die aktuellen Kürzel
+    private void UpdateShortcutTexts()
+    {
+        ClickThroughButton.ToolTip = WithKeys("Click-through: clicks go to the video", HotkeyAction.ClickThrough);
+        SettingsButton.ToolTip = WithKeys("Settings", HotkeyAction.Settings);
+        MinimizeButton.ToolTip = WithKeys("Minimize", HotkeyAction.Compact);
+        ExpandButton.ToolTip = WithKeys("Expand", HotkeyAction.Compact);
+        MapOpener.ToolTip = WithKeys("Show map", HotkeyAction.Map);
+        MapCloser.ToolTip = WithKeys("Hide map", HotkeyAction.Map);
+        var lines = new[] { HotkeyAction.ErgUp, HotkeyAction.ErgDown, HotkeyAction.ErgToggle }
+            .Where(HotkeyWorks).Select(a => $"{Hotkeys.Text(_settings, a)}   {Hotkeys.Label(a)}").ToArray();
+        ErgPill.ToolTip = lines.Length > 0 ? string.Join("\n", lines) : "ERG: set shortcuts in Settings";
+    }
+
+    // Kontextmenü: ERG starten oder beenden, je nach Zustand, mit den aktuellen Kürzeln
+    private void ContextMenu_Opened(object sender, RoutedEventArgs e)
+    {
+        string erg = _guard.Mode == ControlMode.Erg ? "End ERG" : "Start ERG";
+        ErgMenuItem.Header = HotkeyWorks(HotkeyAction.ErgToggle) ? $"{erg}   {Hotkeys.Text(_settings, HotkeyAction.ErgToggle)}" : erg;
+        SettingsMenuItem.Header = HotkeyWorks(HotkeyAction.Settings) ? $"Settings   {Hotkeys.Text(_settings, HotkeyAction.Settings)}" : "Settings";
     }
 
     private async void Window_Loaded(object sender, RoutedEventArgs e)
@@ -336,8 +389,12 @@ public partial class MainWindow : Window
         // nach dem gewählten Tab, nicht nach der Sichtbarkeit: Beim Wechsel blendet die alte Ansicht noch kurz aus
         if (_compact) RenderCompact(s, stale, controlLost, zone);
         else if (HomeTab.IsChecked == true) RenderHome(s, stale, controlLost, zone);
-        else if (ErgTab.IsChecked == true) RenderErg();
     }
+
+    // Ohne Trainer, ohne Daten oder ohne Sensor steht 0 statt eines Strichs, auch bei Puls und Kadenz
+    private static string PowerText(SessionSnapshot s, bool stale) => stale ? "0" : s.Power3sW.ToString();
+    private static string HeartText(SessionSnapshot s) => (s.HeartRateBpm ?? 0).ToString();
+    private static string CadenceText(SessionSnapshot s, bool stale) => stale || s.CadenceRpm is null ? "0" : $"{s.CadenceRpm:0}";
 
     // Gesicht: schläft ohne Gerät (grau), sonst nach FTP-Zone locker, konzentriert oder am Limit (Farbe der Zone).
     // Verbunden, aber gerade keine Daten (nicht getreten): normales Gesicht.
@@ -359,14 +416,12 @@ public partial class MainWindow : Window
 
     private static Color? ZoneColor(int zone) => zone >= 2 ? ((SolidColorBrush)ZoneBrushes[zone]).Color : null;
 
-    // Minimiert: nur Avatar, Watt, Puls und Trittfrequenz
+    // Minimiert: Avatar und die gewählten Werte in einer Reihe
     private void RenderCompact(SessionSnapshot s, bool stale, bool controlLost, int zone)
     {
         MiniMascot.Mood = MoodFor(s, stale, controlLost, zone);
         SetBadges(MiniMascot, controlLost);
-        MiniPowerRun.Text = stale ? "–" : s.Power3sW.ToString();
-        MiniHeartRun.Text = s.HeartRateBpm?.ToString() ?? "–";
-        MiniCadenceRun.Text = stale || s.CadenceRpm is null ? "–" : $"{s.CadenceRpm:0}";
+        FillCompact(s, stale);
         if ((MiniMascot.Tag as int?) == zone) return;
         MiniMascot.Tag = zone;
         MiniMascot.Tint(ZoneColor(zone));
@@ -379,22 +434,29 @@ public partial class MainWindow : Window
 
         // die drei wichtigsten Werte, immer sichtbar; „–“, wenn der Trainer sie nicht liefert (D100: keine Trittfrequenz).
         // Live-Werte springen wie bei Zwift: Ein Hochzählen bei jedem Wert würde das Overlay ständig neu zeichnen (CPU).
-        PowerRun.Text = stale ? "–" : s.Power3sW.ToString();
-        CadenceRun.Text = stale || s.CadenceRpm is null ? "–" : $"{s.CadenceRpm:0}";
-        HeartRun.Text = s.HeartRateBpm?.ToString() ?? "–";
-        var chip = _guard.TargetPowerW is null ? Visibility.Collapsed : Visibility.Visible;
-        if (chip != TargetChip.Visibility && chip == Visibility.Visible) Motion.PopIn(TargetChip, 0.6, 420, 0, 0.5);
-        TargetChip.Visibility = chip;
-        TargetChipText.Text = $"TARGET {_guard.TargetPowerW} W";
+        PowerRun.Text = PowerText(s, stale);
+        CadenceRun.Text = CadenceText(s, stale);
+        HeartRun.Text = HeartText(s);
+        // ERG wie im Entwurf: an mit Ziel in Watt, sonst nur „ERG OFF“. Beim Wechsel springt die Pille kurz auf.
+        string erg = _guard.Mode == ControlMode.Erg && _guard.TargetPowerW is int target ? $"ERG ON: {target}W" : "ERG OFF";
+        if (ErgPillText.Text != erg)
+        {
+            bool modeChanged = ErgPillText.Text.StartsWith("ERG ON") != erg.StartsWith("ERG ON");
+            ErgPillText.Text = erg;
+            if (modeChanged) Motion.PopIn(ErgPill, 0.8, 420, 0, 0.5);
+        }
         ShowZone(zone);
 
-        SpeedRun.Text = $"{s.VirtualSpeedKmh:0.0}";
-        DistanceRun.Text = $"{s.DistanceM / 1000:0.00}";
+        // Werte oben wie im Entwurf: Tempo ganzzahlig, Strecke mit einer Nachkommastelle, Zeit ohne Stunden, solange es geht
+        SpeedRun.Text = $"{s.VirtualSpeedKmh:0}";
+        DistanceRun.Text = $"{s.DistanceM / 1000:0.0}";
         ClimbRun.Text = $"{_sim.ClimbedM:0}";
-        var t = _sim.MovingTime;                                            // zählt nur, solange Watt anliegen
-        TimeValue.Text = $"{(int)t.TotalHours}:{t.Minutes:00}:{t.Seconds:00}";
-        RenderRoute(s);
+        TimeRun.Text = Elapsed(_sim.MovingTime);                            // zählt nur, solange Watt anliegen
+        RenderRoute();
     }
+
+    private static string Elapsed(TimeSpan t) =>
+        t.TotalHours >= 1 ? $"{(int)t.TotalHours}:{t.Minutes:00}:{t.Seconds:00}" : $"{t.Minutes}:{t.Seconds:00}";
 
     // Zonenleiste unter dem Avatar: aktuelle Zone voll in Zwift-Farbe, die übrigen blass. Beim Wechsel springt das neue
     // Segment kurz auf und der Avatar nimmt ab Zone 2 weich die Zonenfarbe an (wie die Umfärbung in Sheet 7).
@@ -406,7 +468,7 @@ public partial class MainWindow : Window
         {
             var segment = (Border)ZoneBar.Children[i];
             segment.Background = ZoneBrushes[i + 1];
-            segment.Opacity = i + 1 == zone ? 1 : 0.22;
+            segment.Opacity = i + 1 == zone ? 1 : 0.3;                     // blasse Töne wie im Entwurf
             if (i + 1 != zone) continue;
             segment.RenderTransformOrigin = new Point(0.5, 0.5);
             Motion.Run(Motion.Scale(segment), ScaleTransform.ScaleYProperty, 1.9, 1, 420, Motion.Pop);
@@ -414,34 +476,14 @@ public partial class MainWindow : Window
         Mascot.Tint(ZoneColor(zone));
     }
 
-    // Strecke auf der Übersicht, rechts neben den drei Hauptwerten
-    private void RenderRoute(SessionSnapshot s)
+    // Strecke: Fortschrittsbalken im HUD, in der Kartenkarte gefahrene und ganze Länge
+    private void RenderRoute()
     {
-        RouteLoaded.Visibility = _sim.Route is null ? Visibility.Collapsed : Visibility.Visible;
-        StatsGrid.Columns = RouteLoaded.Visibility == Visibility.Visible && RouteGraphics.Visibility == Visibility.Visible ? 4 : 2;
-        if (_sim.Route is not { } r) return;
+        if (_sim.Route is not { } r) { ProgressFill.Width = 0; return; }
         double done = Math.Min(_sim.RouteDistanceM, r.LengthM);
-        RouteNameText.Text = $"{r.Name.ToUpperInvariant()} · {done / 1000:0.0} / {r.LengthM / 1000:0.0} KM";
-        GradeValue.Text = $"{s.GradePercent:+0.0;-0.0;0.0} %";
-    }
-
-    private void RenderErg()
-    {
-        bool erg = _guard.Mode == ControlMode.Erg;
-        if (_guard.TargetPowerW is not int target) { if (ErgRun.Text != "–") { _ergCounter.Stop(0); ErgRun.Text = "–"; } }
-        else if (ErgRun.Text == "–") _ergCounter.Stop(target);
-        else _ergCounter.CountTo(target);                                  // ± zählt sichtbar hoch und runter
-        ModeText.Text = erg ? "ERG ON" : _guard.Mode == ControlMode.Sim ? "SIMULATION" : "FREE";
-        if ((ModeChip.Tag as bool?) != erg)
-        {
-            ModeChip.Tag = erg;
-            ModeChip.SetResourceReference(Border.BackgroundProperty, erg ? "AccentBrush" : "ChipBrush");
-            ModeText.SetResourceReference(TextBlock.ForegroundProperty, erg ? "OnAccentBrush" : "TextBrush");
-        }
-        ErgToggleButton.Content = erg ? "End ERG" : "Start ERG";
-        var (min, max) = _guard.PowerLimits;
-        ErgHint.Text = erg ? $"Range {min}–{max} W"                       // Tastenkürzel stehen im Tooltip von − und +
-            : $"Sim: {_limiter.Current:+0.0;-0.0;0.0} % on trainer";
+        double fill = Math.Round(done / r.LengthM * ((FrameworkElement)ProgressFill.Parent).ActualWidth, 1);
+        if (ProgressFill.Width != fill) ProgressFill.Width = fill;
+        RouteDistanceText.Text = $"{done / 1000:0.0} / {r.LengthM / 1000:0.0} KM";
     }
 
     // Brush aus dem Stil setzen, der beim Stilwechsel mitwechselt. Nur bei Änderung, damit nichts neu gezeichnet wird.
@@ -510,7 +552,7 @@ public partial class MainWindow : Window
         var view = CurrentView;
         view.Visibility = Visibility.Visible;
         Motion.Run(view, OpacityProperty, 0, 1, 320, Co.OutE, 120);
-        if (view == HomeView) Motion.Reveal([PowerColumn, SideColumn, RouteLoaded, .. StatsGrid.Children.Cast<UIElement>()], 160, 55);
+        if (view == HomeView) Motion.Reveal(HudParts, 160, 55);
         if (fly) Greeting.Fly(BluetoothAvatar, Mascot, 560);
         Motion.Run(BluetoothCard, OpacityProperty, BluetoothCard.Opacity, 0, 300, Co.OutE, done: () =>
         {
@@ -525,7 +567,7 @@ public partial class MainWindow : Window
     // Tabs gesperrt, solange der Bluetooth-Bildschirm steht
     private void SetViewsLocked(bool locked)
     {
-        HomeTab.IsEnabled = RouteTab.IsEnabled = ErgTab.IsEnabled = !locked;
+        HomeTab.IsEnabled = RouteTab.IsEnabled = !locked;
         Motion.Run(TabBar, OpacityProperty, TabBar.Opacity, locked ? 0.35 : 1, 200, Co.OutE);
     }
 
@@ -605,9 +647,9 @@ public partial class MainWindow : Window
     // über seine Größe hinaus und schnappt zurück. Die Auswahl gleitet zum neuen Tab.
     private void Tab_Checked(object sender, RoutedEventArgs e)
     {
-        if (HomeView is null || RouteView is null || ErgView is null) return;   // während InitializeComponent
-        FrameworkElement next = HomeTab.IsChecked == true ? HomeView : RouteTab.IsChecked == true ? RouteView : ErgView;
-        foreach (var view in new FrameworkElement[] { HomeView, RouteView, ErgView })
+        if (HomeView is null || RouteView is null) return;                 // während InitializeComponent
+        FrameworkElement next = CurrentView;
+        foreach (var view in new FrameworkElement[] { HomeView, RouteView })
         {
             if (view == next || view.Visibility != Visibility.Visible) continue;
             Motion.Run(view, OpacityProperty, view.Opacity, 0, 120, done: () =>
@@ -617,23 +659,25 @@ public partial class MainWindow : Window
                 view.Opacity = 1;
             });
         }
-        // Bluetooth-Bildschirm steht (z. B. „Strecke laden …“ aus dem Menü): Ansicht nur merken, sie kommt danach
-        next.Visibility = _bluetoothCardShown ? Visibility.Hidden : Visibility.Visible;
-        Motion.Run(next, OpacityProperty, next.Opacity, 1, 120);
+        // Bluetooth-Bildschirm steht (z. B. „Strecke laden …“ aus dem Menü) oder der Übergang nach dem Laden einer Strecke
+        // läuft: Ansicht nur merken, sie kommt danach
+        bool wait = _bluetoothCardShown || (_riding && next == HomeView);
+        next.Visibility = wait ? Visibility.Hidden : Visibility.Visible;
+        if (!wait) Motion.Run(next, OpacityProperty, next.Opacity, 1, 120);
         if (RouteTab.IsChecked == true) RefreshRouteList();
         Render(_state.Current);
         MoveDots();
-        Motion.Reveal(RevealParts(next), 60, 55);
+        if (!wait) Motion.Reveal(RevealParts(next), 60, 55);
         if (next == RouteView) RevealRouteItems(160);
 
         var pill = Motion.Shift(TabPill);
-        double x = (HomeTab.IsChecked == true ? 0 : RouteTab.IsChecked == true ? 1 : 2) * TabStep;
+        double x = (HomeTab.IsChecked == true ? 0 : 1) * TabStep;
         Motion.Run(pill, TranslateTransform.XProperty, pill.X, x, 380, Motion.Glide);
         TabPill.RenderTransformOrigin = new Point(0.5, 0.5);
         Motion.Keys(Motion.Scale(TabPill), ScaleTransform.ScaleXProperty, 0, [(0, 1), (110, 1.3), (400, 1)], Motion.Pop);   // streckt sich unterwegs
     }
 
-    private FrameworkElement CurrentView => HomeTab.IsChecked == true ? HomeView : RouteTab.IsChecked == true ? RouteView : ErgView;
+    private FrameworkElement CurrentView => RouteTab.IsChecked == true ? RouteView : HomeView;
 
     // Teile einer Ansicht in der Reihenfolge, in der sie erscheinen
     private IEnumerable<UIElement> RevealParts(FrameworkElement view)
@@ -641,16 +685,17 @@ public partial class MainWindow : Window
         if (view == HomeView)
         {
             yield return RideCard;
-            yield return RouteLoaded;
-            foreach (UIElement tile in StatsGrid.Children) yield return tile;
+            yield return MapCard;
         }
-        else if (view == RouteView)
+        else
         {
             yield return RouteBar;
             yield return AddPanel;
         }
-        else yield return ErgView;
     }
+
+    // Werte der Übersicht ohne den Avatar und seine Karte: Landet er gerade, darf sich sein Platz nicht bewegen
+    private UIElement[] HudParts => [.. TopStats.Children.Cast<UIElement>(), PowerColumn, PowerUnit, SideColumn, ErgPill, MapCard];
 
     // Strecken der Liste nacheinander, wie Zeilen, die getippt werden (Sheet 3)
     private void RevealRouteItems(int delayMs)
@@ -759,18 +804,18 @@ public partial class MainWindow : Window
         catch (Exception ex) { Notice(NoticeKind.Error, "Can't read route: " + ex.Message, 8); }
     }
 
-    // Die Strecke erscheint auf der Übersicht
+    // Die Strecke erscheint auf der Übersicht, mit dem Übergang dorthin
     private void ShowRoute(Route route, string key)
     {
+        bool fromHome = HomeTab.IsChecked == true && HomeView.Visibility == Visibility.Visible;
         _sim.Load(route);
         _activeRoute = key;
-        MapLine.Points = RouteGeometry.Map(route, 72, 72, out _mapProject);
-        ProfileLine.Points = RouteGeometry.Profile(route, 216, 72, out _profileProject);
-        ProfileArea.Points = RouteGeometry.Area(ProfileLine.Points, 72);
-        HomeTab.IsChecked = true;
+        MapLine.Points = RouteGeometry.Map(route, 102, 102, out _mapProject);
+        Profile.SetRoute(route);
+        RouteNameText.Text = route.Name.ToUpperInvariant();
+        PlayRouteLoaded(fromHome);
         Render(_state.Current);
         MoveDots();
-        PlayRouteLoaded();
         RawLog.Note($"Route loaded: {route.Name}, {route.LengthM / 1000:0.0} km");
     }
 
@@ -778,27 +823,87 @@ public partial class MainWindow : Window
     {
         _sim.Unload();
         _activeRoute = null;
-        _mapProject = _profileProject = null;
+        _mapProject = null;
+        Profile.SetRoute(null);
+        SetMapOpen(false);
         HomeTab.IsChecked = true;
         Render(_state.Current);
     }
 
     private void MoveDots()
     {
-        if (_sim.Route is not { } route || _mapProject is null || _profileProject is null
-            || HomeView.Visibility != Visibility.Visible || RouteGraphics.Visibility != Visibility.Visible) return;
+        if (_sim.Route is not { } route || _mapProject is null || MapCard.Visibility != Visibility.Visible) return;
         double distance = Math.Min(_sim.RouteDistanceM, route.LengthM);
-        var p = route.At(distance);
-        var m = _mapProject(p);
+        var m = _mapProject(route.At(distance));
         Canvas.SetLeft(MapDot, m.X - 4);
         Canvas.SetTop(MapDot, m.Y - 4);
-        var q = _profileProject(p);
-        Canvas.SetLeft(ProfileDot, q.X - 4);
-        Canvas.SetTop(ProfileDot, q.Y - 4);
-        // gefahrener Teil in beiden Karten markiert
-        MapDone.Points = RouteGeometry.Done(MapLine.Points, route, distance, _mapProject);
-        ProfileDone.Points = RouteGeometry.Done(ProfileLine.Points, route, distance, _profileProject);
-        ProfileDoneArea.Points = RouteGeometry.Area(ProfileDone.Points, 72);
+        MapDone.Points = RouteGeometry.Done(MapLine.Points, route, distance, _mapProject);   // gefahrener Teil markiert
+        Profile.SetPosition(distance, _sim.GradePercent);
+    }
+
+    // ---------- Karte aus- und einklappen ----------
+
+    private double ExpandedWidth => HudW + (_mapOpen ? MapW : 0);
+
+    // Die Notch wächst mit Feder nach beiden Seiten (bleibt also mittig), die Karte blendet dabei ein.
+    // Beim Einklappen blendet sie erst aus, dann zieht sich die Notch ohne Nachfedern zusammen.
+    private void SetMapOpen(bool open, bool animate = true)
+    {
+        open &= _sim.Route is not null;
+        MapOpener.Visibility = _sim.Route is not null && !open ? Visibility.Visible : Visibility.Collapsed;
+        if (open == _mapOpen) return;
+        _mapOpen = open;
+        if (_compact || _switching || _greeting || !animate || !Motion.Enabled)
+        {
+            MapCard.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
+            MapCard.Opacity = 1;
+            if (!_compact) { _widthLoop.Stop(); Shell.Width = ExpandedWidth; }   // minimiert: Aufklappen setzt die Breite
+            MoveDots();
+            return;
+        }
+        if (open)
+        {
+            MapCard.Visibility = Visibility.Visible;
+            MoveDots();
+            Motion.Run(MapCard, OpacityProperty, 0, 1, 260, Co.OutE, 120);
+            AnimateWidth(ExpandedWidth, 0.86);
+        }
+        else
+        {
+            Motion.Run(MapCard, OpacityProperty, MapCard.Opacity, 0, 140, Co.OutE, done: () =>
+            {
+                if (_mapOpen) return;                                       // inzwischen wieder ausgeklappt
+                MapCard.Visibility = Visibility.Collapsed;
+                MapCard.Opacity = 1;
+            });
+            Motion.After(80, () => { if (!_mapOpen) AnimateWidth(ExpandedWidth, 1); });
+        }
+    }
+
+    private void AnimateWidth(double target, double damping)
+    {
+        if (!_shellWidth.Animating) _shellWidth.Jump(Shell.Width);
+        _shellWidth.SpringTo(target, 0.42, damping);
+        _widthLoop.Start();
+    }
+
+    // kein Knopf: Der rechte Rand leuchtet beim Darüberfahren leicht auf, ein Klick klappt die Karte aus oder ein
+    private void MapEdge_MouseEnter(object sender, MouseEventArgs e) => LightEdge((Border)sender, 1);
+
+    private void MapEdge_MouseLeave(object sender, MouseEventArgs e) => LightEdge((Border)sender, 0);
+
+    private void MapEdge_Click(object sender, MouseButtonEventArgs e)
+    {
+        e.Handled = true;                                                   // sonst startet das Verschieben
+        LightEdge((Border)sender, 0);
+        _settings.ShowMap = !_mapOpen;                                      // gilt auch für die nächste Strecke
+        SetMapOpen(!_mapOpen);
+    }
+
+    private static void LightEdge(Border edge, double to)
+    {
+        var glow = (UIElement)edge.Child;
+        Motion.Run(glow, OpacityProperty, glow.Opacity, to, to > 0 ? 160 : 260, Co.OutE);
     }
 
     // ---------- Einstellungen (Phase 9) ----------
@@ -815,7 +920,8 @@ public partial class MainWindow : Window
         double scale = Math.Clamp(_settings.Scale, 0.5, 2);
         Root.LayoutTransform = new ScaleTransform(scale, scale);
         Width = BaseWidth * scale;
-        RouteGraphics.Visibility = _settings.ShowMap ? Visibility.Visible : Visibility.Collapsed;
+        SetMapOpen(_settings.ShowMap);
+        ApplyCompactValues();
         if (!_settings.NotchDock && _settings.Docked) { SetDocked(false); Top += 12; }
         else SetDocked(_settings.Docked);                                  // Ecken passend zum Stil
 
@@ -823,6 +929,51 @@ public partial class MainWindow : Window
         _sim.Physics.CdA = Math.Clamp(_settings.CdA, 0.1, 1);
         Render(_state.Current);
     }
+
+    // Welche Werte die kleine Notch zeigt (Einstellungen). Ist sie gerade klein, passt sie ihre Breite weich an.
+    private void ApplyCompactValues()
+    {
+        foreach (FrameworkElement slot in CompactValues.Children)
+            slot.Visibility = _settings.CompactValues.Contains((string)slot.Tag) ? Visibility.Visible : Visibility.Collapsed;
+        if (_compact && !_switching && Math.Abs(Shell.Width - CompactWidth) > 0.5) AnimateWidth(CompactWidth, 0.86);
+    }
+
+    private void FillCompact(SessionSnapshot s, bool stale)
+    {
+        MiniPowerRun.Text = PowerText(s, stale);
+        MiniHeartRun.Text = HeartText(s);
+        MiniCadenceRun.Text = CadenceText(s, stale);
+        MiniSpeedRun.Text = $"{s.VirtualSpeedKmh:0}";
+        MiniDistanceRun.Text = $"{s.DistanceM / 1000:0.0}";
+        MiniClimbRun.Text = $"{_sim.ClimbedM:0}";
+        MiniTimeRun.Text = Elapsed(_sim.MovingTime);
+        FitCompactSlots();
+    }
+
+    // Strecke, Höhenmeter und Zeit wachsen nur: Ihr Feld ist so breit wie der Wert. Kommt eine Stelle dazu (selten),
+    // wächst die kleine Notch weich mit. Ziffern sind gleich breit, die Breite ändert sich also nur mit der Stellenzahl.
+    private void FitCompactSlots()
+    {
+        bool changed = false;
+        foreach (var (slot, run, icon) in new[] { (DistanceSlot, MiniDistanceRun, MiniDistanceIcon), (ClimbSlot, MiniClimbRun, MiniClimbIcon),
+                                                  (TimeSlot, MiniTimeRun, MiniTimeIcon) })
+        {
+            var text = new FormattedText(run.Text, System.Globalization.CultureInfo.InvariantCulture, FlowDirection.LeftToRight,
+                new Typeface(TryFindResource("HudFont") as FontFamily ?? FontFamily, FontStyles.Normal, FontWeights.Normal, FontStretches.Normal),
+                21, Brushes.White, VisualTreeHelper.GetDpi(this).PixelsPerDip);
+            double width = Math.Ceiling(text.WidthIncludingTrailingWhitespace + icon.Margin.Left + icon.Width);
+            if (Math.Abs(slot.Width - width) < 0.5) continue;
+            slot.Width = width;
+            changed |= slot.Visibility == Visibility.Visible;
+        }
+        if (changed && _compact && !_switching) AnimateWidth(CompactWidth, 0.86);
+    }
+
+    // Breite der kleinen Notch: Rahmen, Rand, Avatar, die gezeigten Felder samt Abstand, Aufklappen
+    private double CompactWidth =>
+        2 + 8 + MiniMascot.Width + MiniMascot.Margin.Right
+        + CompactValues.Children.OfType<FrameworkElement>().Where(s => s.Visibility == Visibility.Visible).Sum(s => s.Width + s.Margin.Right)
+        + 32 + 4;
 
     // Hintergrund für Panel und Notch-Ohren: ganz deckend, bis ein Trainer verbunden ist, dann die eingestellte Deckkraft
     private Color ShellColor
@@ -835,7 +986,13 @@ public partial class MainWindow : Window
         }
     }
 
-    private void ApplyBackground() => Shell.Background = LeftEar.Fill = RightEar.Fill = Frozen(ShellColor);
+    private void ApplyBackground()
+    {
+        Shell.Background = LeftEar.Fill = RightEar.Fill = Frozen(ShellColor);
+        var solid = _surface;
+        solid.A = 255;
+        NoticeBar.Background = Frozen(solid);                               // Hinweis deckt, was unter ihm in der Kopfzeile liegt
+    }
 
     // weich überblendet, wenn sich der Verbindungszustand ändert
     private void SetOpaque(bool opaque)
@@ -873,7 +1030,8 @@ public partial class MainWindow : Window
         var screen = Native.MonitorBounds(this);
         double padX = SettingsWindow.PadX, padY = SettingsWindow.PadY;
         double width = _settingsWindow.Width - 2 * padX, height = _settingsWindow.Height - 2 * padY;
-        double left = Math.Clamp(Left + ActualWidth - width - 14, screen.Left + 8, screen.Right - width - 8);
+        double shellRight = Shell.TranslatePoint(new Point(Shell.ActualWidth, 0), this).X;   // rechte Kante der Notch, nicht des Fensters
+        double left = Math.Clamp(Left + shellRight - width, screen.Left + 8, screen.Right - width - 8);
         double below = Top + ActualHeight - Overhang + 8, above = Top - height - 8;
         _settingsWindow.Left = left - padX;
         _settingsWindow.Top = (below + height <= screen.Bottom ? below : Math.Max(screen.Top + 8, above)) - padY;
@@ -997,14 +1155,24 @@ public partial class MainWindow : Window
 
     private void OnHotkey(int id)
     {
-        switch (id)
+        switch ((HotkeyAction)id)
         {
-            case HotkeyClickThrough: SetClickThrough(!_clickThrough); break;
-            case HotkeyPowerUp:   PowerStep(+10); break;
-            case HotkeyPowerDown: PowerStep(-10); break;
-            case HotkeyEndErg:    EndErg(); break;
-            case HotkeySettings:  OpenSettings(); break;
+            case HotkeyAction.ErgUp: PowerStep(+10); break;
+            case HotkeyAction.ErgDown: PowerStep(-10); break;
+            case HotkeyAction.ErgToggle: ToggleErg(); break;
+            case HotkeyAction.ClickThrough: SetClickThrough(!_clickThrough); break;
+            case HotkeyAction.Compact: if (_compact) Expand_Click(this, new RoutedEventArgs()); else Minimize_Click(this, new RoutedEventArgs()); break;
+            case HotkeyAction.Map: ToggleMap(); break;
+            case HotkeyAction.Settings: OpenSettings(); break;
         }
+    }
+
+    // Karte per Tastenkürzel wie per Klick auf den Rand; ohne Strecke gibt es keine
+    private void ToggleMap()
+    {
+        if (_sim.Route is null) { Notice(NoticeKind.Info, "No route loaded", 3); return; }
+        _settings.ShowMap = !_mapOpen;
+        SetMapOpen(!_mapOpen);
     }
 
     private void PowerStep(int watts)
@@ -1020,24 +1188,28 @@ public partial class MainWindow : Window
         Render(_state.Current);
     }
 
-    private void PowerUp_Click(object sender, RoutedEventArgs e) => PowerStep(+10);
-
-    private void PowerDown_Click(object sender, RoutedEventArgs e) => PowerStep(-10);
-
-    private void ErgToggle_Click(object sender, RoutedEventArgs e)
+    // ERG an (mit dem letzten Ziel, sonst 150 W) oder aus
+    private void ToggleErg()
     {
         if (_guard.Mode == ControlMode.Erg) EndErg();
         else PowerStep(0);
     }
 
-    private void EndErg_Click(object sender, RoutedEventArgs e) => EndErg();
+    private void ErgToggle_Click(object sender, RoutedEventArgs e) => ToggleErg();
 
+    // Durchklicken nur mit funktionierendem Kürzel: Klicks gehen dann durchs Overlay, das Kürzel ist der einzige Weg zurück
     private void SetClickThrough(bool on)
     {
+        if (on && !HotkeyWorks(HotkeyAction.ClickThrough))
+        {
+            ClickThroughButton.IsChecked = false;
+            Notice(NoticeKind.Warning, "Set a click-through shortcut first", 6);
+            return;
+        }
         _clickThrough = on;
         Native.SetClickThrough(this, on);
         ClickThroughButton.IsChecked = on;
-        if (on) Notice(NoticeKind.Info, "Click-through on · Ctrl+Alt+D to undo", 6);
+        if (on) Notice(NoticeKind.Info, $"Click-through on · {Hotkeys.Text(_settings, HotkeyAction.ClickThrough)} to undo", 6);
     }
 
     private void ClickThrough_Click(object sender, RoutedEventArgs e) => SetClickThrough(ClickThroughButton.IsChecked == true);
@@ -1073,42 +1245,44 @@ public partial class MainWindow : Window
 
     // ---------- Strecke geladen ----------
 
-    // Der Avatar fährt kurz über das Höhenprofil der neuen Strecke, danach erscheint die Strecke und der grüne Haken.
-    // Minimiert, auf dem Bluetooth-Bildschirm oder ohne Animationseffekte gibt es nur den Haken.
-    private void PlayRouteLoaded()
+    // Übergang statt Ladeanimation, sofort beim Bestätigen: Die Streckenauswahl (oder die Übersicht) blendet aus, der
+    // Avatar fährt über eine gerade Linie mit ein paar Steinchen und landet auf seinem Platz, während die Übersicht
+    // erscheint. Danach klappt die Karte aus (falls eingestellt) und der grüne Haken kommt.
+    // Minimiert, auf dem Bluetooth-Bildschirm oder ohne Animationseffekte: gleich die Übersicht.
+    private void PlayRouteLoaded(bool fromHome)
     {
-        if (_compact || _bluetoothCardShown || _greeting || !Motion.Enabled || Ride.Running) { CheckMark(); return; }
-        var heights = ProfileHeights();
-        RouteLoaded.Opacity = 0;                                            // Strecke erscheint erst nach der Fahrt
-        Motion.After(480, () =>                                             // erst die Übersicht aufbauen lassen
+        void Finish()
         {
-            if (HomeTab.IsChecked != true || _compact) { RouteLoaded.Opacity = 1; CheckMark(); return; }
-            UpdateLayout();
-            var area = new Rect(ViewsArea.TranslatePoint(new Point(0, 0), Ride), new Size(ViewsArea.ActualWidth, ViewsArea.ActualHeight));
-            Motion.Run(HomeView, OpacityProperty, HomeView.Opacity, 0.12, 250, Co.OutE);
-            void Brighten()
-            {
-                Ride.Returning -= Brighten;
-                Motion.Run(HomeView, OpacityProperty, HomeView.Opacity, 1, 420, Co.InOutE);
-            }
-            Ride.Returning += Brighten;
-            Ride.Start(Mascot, area, heights, () =>
-            {
-                Motion.Reveal([RouteLoaded], 0);
-                CheckMark();
-            });
+            SetMapOpen(_settings.ShowMap);
+            CheckMark();
+        }
+        if (_compact || _bluetoothCardShown || _greeting || !Motion.Enabled || Ride.Running)
+        {
+            HomeTab.IsChecked = true;
+            Finish();
+            return;
+        }
+        _riding = true;
+        if (fromHome) Motion.Run(HomeView, OpacityProperty, HomeView.Opacity, 0, 160, Co.OutE);
+        HomeTab.IsChecked = true;                                           // die Auswahl gleitet schon, die Übersicht wartet
+        UpdateLayout();
+        var area = new Rect(ViewsArea.TranslatePoint(new Point(0, 0), Ride), new Size(ViewsArea.ActualWidth, ViewsArea.ActualHeight));
+        Ride.Start(fromHome ? Mascot : null, Mascot, area, () =>
+        {
+            _riding = false;
+            Finish();
         });
     }
 
-    // Höhenprofil der geladenen Strecke als Werte 0 … 1 (aus der gezeichneten Profillinie)
-    private double[] ProfileHeights()
+    // Der Avatar gleitet auf seinen Platz: Übersicht einblenden, die Werte erscheinen nacheinander
+    private void Ride_Landing()
     {
-        var points = ProfileLine.Points;
-        if (points is null || points.Count < 2) return [0, 0];
-        int step = Math.Max(1, points.Count / 60);
-        var ys = Enumerable.Range(0, points.Count / step).Select(i => points[i * step].Y).ToArray();
-        double min = ys.Min(), max = ys.Max(), range = Math.Max(1, max - min);
-        return ys.Select(y => (max - y) / range).ToArray();
+        _riding = false;
+        if (CurrentView != HomeView || _bluetoothCardShown) return;          // inzwischen woanders
+        HomeView.Visibility = Visibility.Visible;
+        Motion.Run(HomeView, OpacityProperty, 0, 1, 300, Co.OutE);
+        Motion.Reveal(HudParts, 60, 45);
+        Render(_state.Current);
     }
     // ---------- Start, Minimieren, Beenden ----------
 
@@ -1124,11 +1298,11 @@ public partial class MainWindow : Window
         Mascot.Opacity = 0;
         ApplyBackground();                                                  // ohne Trainer in voller Deckkraft
         _island.Docked = _settings.Docked;
-        _island.Jump(CompactW, CompactH, CompactR);
+        _island.Jump(StartW, CompactH, CompactR);
         _island.Open();
         Greeting.Prepare();                                                 // erst angeordnet, dann messen
         var area = ViewsArea.TranslatePoint(new Point(0, 0), Greeting);
-        Greeting.Start(new Rect(area, new Size(ViewsArea.ActualWidth, ViewsArea.ActualHeight)), CompactW, CompactH);
+        Greeting.Start(new Rect(area, new Size(ViewsArea.ActualWidth, ViewsArea.ActualHeight)), StartW, CompactH);
     }
 
     // Der Avatar gleitet auf seinen Platz: in die Übersicht oder nach links in die Bluetooth-Karte.
@@ -1139,7 +1313,7 @@ public partial class MainWindow : Window
         Header.Opacity = 1;
         Motion.Run(Views, OpacityProperty, 0, 1, 260, Co.OutE);
         if (target == BluetoothAvatar) ShowBluetoothScreen(fly: false);
-        else Motion.Reveal([PowerColumn, SideColumn, RouteLoaded, .. StatsGrid.Children.Cast<UIElement>()], 140, 60);
+        else Motion.Reveal(HudParts, 140, 60);
     }
 
     private void Greeting_Finished()
@@ -1151,23 +1325,25 @@ public partial class MainWindow : Window
         if (_pendingNotice is { } n) { _pendingNotice = null; Notice(n.Kind, n.Text, n.Seconds); }
     }
 
-    // Minimieren nur per Knopf (Sheet 3, obere Reihe): Inhalt blendet aus, die Insel zieht sich mit der Schließkurve
-    // zur kleinen Notch zusammen, darin erscheinen Avatar und die drei Werte. Nie von selbst.
+    // Minimieren per Knopf oder Tastenkürzel (Sheet 3, obere Reihe): Inhalt blendet aus, die Insel zieht sich mit der
+    // Schließkurve zur kleinen Notch zusammen, darin erscheinen Avatar und die gewählten Werte. Nie von selbst.
     private void Minimize_Click(object sender, RoutedEventArgs e)
     {
         if (_compact || _switching || _greeting) return;
         _switching = _anchorTop = true;
+        _widthLoop.Stop();                                                  // Karte klappt gerade: Breite steht ab jetzt fest
+        FillCompact(_state.Current, IsStale(_state.Current));               // Felder passend zu den Werten, bevor die Breite feststeht
         // Fenster behält seine volle Höhe (unter der Pille durchsichtig, Klicks gehen durch): Ändert ein durchsichtiges
         // Fenster seine Größe, zeigt Windows kurz das alte Bild in der neuen Größe, beim Aufklappen sah man das flackern
         MinHeight = ActualHeight;
         Motion.Run(Expanded, OpacityProperty, 1, 0, 110, Co.OutE);         // erst ausblenden, dann zusammenziehen,
-        Motion.After(100, () => _island.Close(CompactW, CompactH, CompactR, () =>   // sonst schneidet die Kante den Inhalt
+        Motion.After(100, () => _island.Close(CompactWidth, CompactH, CompactR, () =>   // sonst schneidet die Kante den Inhalt
         {
             _compact = true;
             Expanded.Visibility = Visibility.Collapsed;
             Expanded.Opacity = 1;
             CompactBar.Visibility = Visibility.Visible;
-            Shell.Width = CompactW;
+            Shell.Width = CompactWidth;
             Shell.Padding = new Thickness(8, 0, 4, 0);
             UpdateLayout();
             _island.Reset();
@@ -1188,12 +1364,12 @@ public partial class MainWindow : Window
             _compact = false;
             CompactBar.Visibility = Visibility.Collapsed;
             CompactBar.Opacity = 1;
-            Shell.Width = 720;
-            Shell.Padding = new Thickness(10, 8, 10, 10);
+            Shell.Width = ExpandedWidth;
+            Shell.Padding = new Thickness(10, 7, 10, 10);
             Expanded.Visibility = Visibility.Visible;
             Header.Opacity = Views.Opacity = 0;
             UpdateLayout();
-            _island.Jump(CompactW, CompactH, CompactR);
+            _island.Jump(CompactWidth, CompactH, CompactR);
             _island.Open(() => { _switching = false; _anchorTop = false; MinHeight = 0; });
             Render(_state.Current);
             // Inhalt erst, wenn die Insel fast offen ist: sonst schneidet ihre Kante die Karten
@@ -1211,7 +1387,7 @@ public partial class MainWindow : Window
         Motion.Run(_compact ? CompactBar : Expanded, OpacityProperty, 1, 0, 140, Co.OutE);
         void Retract() => _island.Close(NotchW, 0, CompactR, done, 300);
         if (_compact) Retract();
-        else _island.Close(CompactW, CompactH, CompactR, () => Motion.After(90, Retract));
+        else _island.Close(StartW, CompactH, CompactR, () => Motion.After(90, Retract));
     }
 
     protected override void OnClosing(CancelEventArgs e)
@@ -1219,7 +1395,7 @@ public partial class MainWindow : Window
         _closing = true;
         _timer.Stop();                                                      // keine neue Aufzeichnung nach dem Export
         var hwnd = Native.Handle(this);
-        for (int id = 1; id <= 10; id++) Native.UnregisterHotKey(hwnd, id);
+        foreach (var (action, _, _) in Hotkeys.All) Native.UnregisterHotKey(hwnd, (int)action);
         Native.SetThreadExecutionState(Native.ES_CONTINUOUS);
         _settings.Left = Left;
         _settings.Top = Top;

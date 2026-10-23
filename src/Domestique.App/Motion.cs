@@ -202,31 +202,3 @@ internal static class Motion
         return ease;
     }
 }
-
-// Zahl, die weich zum neuen Wert zählt, statt zu springen (wie der Betrag in Sheet 7). Höchstens 30 Bilder pro Sekunde.
-internal sealed class Counter : Animatable
-{
-    public static readonly DependencyProperty ValueProperty = DependencyProperty.Register(nameof(Value), typeof(double), typeof(Counter),
-        new PropertyMetadata(0.0, (d, e) => ((Counter)d).Display?.Invoke((double)e.NewValue)));
-
-    public double Value { get => (double)GetValue(ValueProperty); set => SetValue(ValueProperty, value); }
-    public Action<double>? Display { get; set; }          // zeigt den Wert an, auch während des Zählens
-
-    public void CountTo(double target, int ms = 300)
-    {
-        if (!Motion.Enabled || Math.Abs(target - Value) < 0.5) { Stop(target); return; }
-        var animation = new DoubleAnimation(Value, target, TimeSpan.FromMilliseconds(ms)) { EasingFunction = Motion.Out };
-        Timeline.SetDesiredFrameRate(animation, 30);
-        BeginAnimation(ValueProperty, animation);
-    }
-
-    // sofort auf den Wert, ohne Zählen
-    public void Stop(double value)
-    {
-        BeginAnimation(ValueProperty, null);
-        Value = value;
-        Display?.Invoke(value);
-    }
-
-    protected override Freezable CreateInstanceCore() => new Counter();
-}
