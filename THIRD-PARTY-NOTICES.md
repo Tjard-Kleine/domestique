@@ -1,5 +1,11 @@
 # Third-party notices
 
+## Archivo Black
+
+The overlay numbers use the font [Archivo Black](https://github.com/Omnibus-Type/ArchivoBlack)
+(`src/Domestique.App/Fonts/ArchivoBlack-Regular.ttf`), Copyright 2017 The Archivo Black Project Authors,
+licensed under the SIL Open Font License 1.1. The full license is in `src/Domestique.App/Fonts/ArchivoBlack-OFL.txt`.
+
 ## Coucou
 
 Parts of the animation code are ported from [Coucou](https://github.com/Louis-CFM/coucou) by Louis Raillé:

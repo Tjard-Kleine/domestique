@@ -5,6 +5,10 @@
     <ProjectReference Include="..\Domestique.Ble\Domestique.Ble.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Resource Include="Fonts\ArchivoBlack-Regular.ttf" />
+  </ItemGroup>
+
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>

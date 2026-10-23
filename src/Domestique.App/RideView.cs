@@ -4,26 +4,30 @@ using static Domestique.App.Co;
 
 namespace Domestique.App;
 
-// Strecke geladen: Der Avatar gleitet nach rechts, unter ihm läuft ein leicht holpriger Weg aus dem Höhenprofil der
-// neuen Strecke durch, er fährt ein paar Sekunden darüber (wippt, neigt sich mit der Steigung, etwas Staub hinter ihm)
-// und gleitet zurück auf seinen Platz. Läuft nur während der Animation, danach ist die Ansicht weg.
+// Strecke geladen: Übergang, der sofort beim Bestätigen beginnt. Der Avatar fährt herein (oder springt aus der
+// Übersicht) auf eine gerade weiße Linie, auf der ein paar Steinchen vorbeiziehen: nur weiße Linien, keine Verläufe.
+// Danach gleitet er auf seinen Platz in der Übersicht, die dabei erscheint. Läuft nur während der Animation.
 internal sealed class RideView : FrameworkElement
 {
-    private const double OutMs = 550, RideMs = 2600, BackMs = 550;
+    private const double InMs = 480, RideMs = 1500, LandMs = 560;
+
+    // Steinchen auf der Linie (Lage 0 … 1, Breite, Höhe) und kleine Kiesel darunter (Lage, Abstand unter der Linie)
+    private static readonly (double U, double W, double H)[] Stones = [(0.08, 7, 3.6), (0.31, 4.5, 2.6), (0.55, 9, 4.4), (0.78, 5.5, 3)];
+    private static readonly (double U, double Dy)[] Pebbles = [(0.2, 6), (0.47, 8), (0.68, 5.5), (0.93, 7.5)];
 
     private readonly FrameLoop _loop;
-    private double _start, _hh, _rideX, _baseline, _amp, _period;
-    private double[] _heights = [0];
+    private double _start, _hh, _lineY, _scroll;
     private Rect _area;
-    private Point _home;
+    private Point _from, _ride;
+    private bool _drivesIn, _landing;
     private AvatarPose _pose = new();
-    private Avatar? _from;
+    private Avatar? _source, _target;
+    private (Point Center, double Hh, AvatarPose Pose)? _home;
     private Action? _done;
-    private (Point Center, double Tilt, double Track, double Scroll, AvatarPose Pose) _frame;
+    private (Point Center, AvatarPose Pose, double Line, double Fade) _frame;
 
     public bool Running { get; private set; }
-    public event Action? Returning;                                          // gleitet zurück: Übersicht wieder aufhellen
-    private bool _returning;
+    public event Action? Landing;                                            // gleitet auf seinen Platz: Übersicht einblenden
 
     public RideView()
     {
@@ -31,28 +35,30 @@ internal sealed class RideView : FrameworkElement
         _loop = new FrameLoop(Tick);
     }
 
-    // heights: Höhenprofil der Strecke, 0 … 1 (flache Strecken bekommen trotzdem ein paar sanfte Wellen)
-    public void Start(Avatar from, Rect area, double[] heights, Action? done = null)
+    // from: der sichtbare Avatar, von dem er abspringt; null, wenn er von links hereinfährt (Übersicht gerade nicht zu sehen).
+    // to: sein Platz in der Übersicht, area: Fläche der Ansichten in eigenen Koordinaten.
+    public void Start(Avatar? from, Avatar to, Rect area, Action? done = null)
     {
         if (Running) return;
-        if (!Motion.Enabled) { done?.Invoke(); return; }
+        if (!Motion.Enabled) { Landing?.Invoke(); done?.Invoke(); return; }
         Visibility = Visibility.Visible;
         UpdateLayout();
-        var (c, hh) = from.Body;
-        _home = from.TranslatePoint(c, this);
+        double hh = to.Body.HalfHeight;
         _hh = hh;
-        _pose = from.CurrentPose().Clone();
-        _from = from;
-        _done = done;
         _area = area;
-        _heights = heights.Length > 1 ? heights : [0, 0];
-        _rideX = area.Left + area.Width * 0.55;
-        _baseline = area.Top + area.Height * 0.84;
-        _amp = hh * 0.75;
-        _period = area.Width * 1.6;
-        from.Opacity = 0;
+        _lineY = area.Top + area.Height * 0.8;
+        _ride = new Point(area.Left + area.Width * 0.46, _lineY - hh * 1.02);
+        _drivesIn = from is null;
+        _source = from;
+        _target = to;
+        _from = from is null ? new Point(area.Left - hh * AvatarArt.Aspect * 1.2, _ride.Y) : from.TranslatePoint(from.Body.Center, this);
+        _pose = (from ?? to).CurrentPose().Clone();
+        _home = null;
+        _landing = false;
+        _done = done;
+        if (from is not null) from.Opacity = 0;
+        to.Opacity = 0;
         _start = _loop.Now;
-        _returning = false;
         Running = true;
         _loop.Start();
     }
@@ -60,115 +66,102 @@ internal sealed class RideView : FrameworkElement
     private bool Tick(double dt, double now)
     {
         double t = now - _start;
-        double scroll = Math.Max(0, t - OutMs) / 1000 * _area.Width * 0.45;   // der Weg läuft nach links durch
-        var ride = new Point(_rideX, TrackY(_rideX, scroll) - _hh * 1.02);
         var pose = _pose.Clone();
+        pose.LookX = 0.5;                                                    // schaut nach vorn
         Point center;
-        double tilt = 0, track;
-        if (t < OutMs)                                                       // nach rechts gleiten
+        double line, fade = 1;
+        if (t < InMs)                                                        // hereinfahren bzw. abspringen, Linie zieht sich auf
         {
-            double k = InOut(t / OutMs);
-            center = Arc(_home, ride, k);
-            pose.Sx *= 1 + 0.1 * Math.Sin(Math.PI * k);
-            pose.Sy *= 1 - 0.06 * Math.Sin(Math.PI * k);
+            double k = _drivesIn ? Out(t / InMs) : InOut(t / InMs);
+            center = new Point(Lerp(_from.X, _ride.X, k), Lerp(_from.Y, _ride.Y, k) - (_drivesIn ? 0 : Math.Sin(Math.PI * k) * _hh * 0.35));
             pose.LookX = Lerp(_pose.LookX, 0.5, k);
-            track = 0;
+            pose.Sx *= 1 + 0.08 * Math.Sin(Math.PI * k);
+            pose.Sy *= 1 - 0.05 * Math.Sin(Math.PI * k);
+            line = Out(t / InMs);
+            _scroll += dt * _area.Width * 0.3 * k;
         }
-        else if (t < OutMs + RideMs)                                         // fahren
+        else if (t < InMs + RideMs)                                          // fahren: wippt im Tritt, Steinchen ziehen vorbei
         {
-            double rt = (t - OutMs) / 1000;
-            double slope = (TrackY(_rideX + 4, scroll) - TrackY(_rideX - 4, scroll)) / 8;
-            tilt = Math.Atan(slope) * 0.7;
-            double bob = Math.Sin(rt * 2 * Math.PI * 3);                     // tritt in die Pedale
-            center = new Point(ride.X, ride.Y + bob * _hh * 0.03);
+            double rt = (t - InMs) / 1000;
+            double bob = Math.Sin(rt * 2 * Math.PI * 3);
+            center = new Point(_ride.X, _ride.Y + bob * _hh * 0.03);
             pose.Sy *= 1 + bob * 0.025;
             pose.Sx *= 1 - bob * 0.015;
-            pose.LookX = 0.5;
-            track = Seg(rt, 0, 0.25) * (1 - Seg(rt, RideMs / 1000 - 0.3, RideMs / 1000));
+            line = 1;
+            _scroll += dt * _area.Width * 0.55;
         }
-        else                                                                 // zurück auf den Platz
+        else                                                                 // landen: Übersicht erscheint, Linie verschwindet
         {
-            if (!_returning) { _returning = true; Returning?.Invoke(); }
-            double k = InOut(Seg(t - OutMs - RideMs, 0, BackMs));
-            center = Arc(ride, _home, k);
+            if (!_landing)
+            {
+                _landing = true;
+                Landing?.Invoke();                                           // Übersicht sichtbar machen und Layout rechnen
+                _target!.UpdateLayout();
+                var (c, hh) = _target.Body;
+                _home = (_target.TranslatePoint(c, this), hh, _target.CurrentPose().Clone());
+            }
+            var (home, homeHh, homePose) = _home!.Value;
+            double k = InOut(Seg(t - InMs - RideMs, 0, LandMs));
+            center = new Point(Lerp(_ride.X, home.X, k), Lerp(_ride.Y, home.Y, k) - Math.Sin(Math.PI * k) * _hh * 0.35);
+            pose = AvatarPose.Lerp(pose, homePose, k);
             pose.Sx *= 1 + 0.1 * Math.Sin(Math.PI * k);
             pose.Sy *= 1 - 0.06 * Math.Sin(Math.PI * k);
-            pose.LookX = Lerp(0.5, _pose.LookX, k);
-            track = 0;
+            line = 1;
+            fade = 1 - Seg(k, 0, 0.6);
+            _scroll += dt * _area.Width * 0.55 * (1 - k);
             if (k >= 1)
             {
                 Running = false;
                 Visibility = Visibility.Collapsed;
-                if (_from is not null) _from.Opacity = 1;
+                _target!.Opacity = 1;
+                if (_source is not null) _source.Opacity = 1;
                 var done = _done;
                 _done = null;
                 done?.Invoke();
                 return false;
             }
         }
-        pose.Tilt = tilt;
-        _frame = (center, tilt, track, scroll, pose);
+        _frame = (center, pose, line, fade);
         InvalidateVisual();
         return true;
-    }
-
-    // kleiner Bogen nach oben, wie beim Gleiten zwischen Bluetooth-Karte und Übersicht
-    private Point Arc(Point a, Point b, double k) =>
-        new(Lerp(a.X, b.X, k), Lerp(a.Y, b.Y, k) - Math.Sin(Math.PI * k) * _hh * 0.35);
-
-    // Höhe des Wegs an Bildschirmstelle x: Höhenprofil, zyklisch, plus leichte Holprigkeit
-    private double TrackY(double x, double scroll)
-    {
-        double wx = x - _area.Left + scroll;
-        double u = (wx / _period % 1 + 1) % 1 * _heights.Length;
-        int i = (int)u;
-        double f = (1 - Math.Cos((u - i) * Math.PI)) / 2;
-        double h = Lerp(_heights[i % _heights.Length], _heights[(i + 1) % _heights.Length], f);
-        h = h * 0.8 + 0.12 * Math.Sin(wx * 0.045) + 0.06 * Math.Sin(wx * 0.13 + 1);
-        return _baseline - h * _amp;
     }
 
     protected override void OnRender(DrawingContext dc)
     {
         if (!Running || _frame.Pose is null) return;
-        var (center, _, track, scroll, pose) = _frame;
-        if (track > 0.01)
+        var (center, pose, line, fade) = _frame;
+        var white = TryFindResource("TextBrush") as Brush ?? Brushes.White;
+        double left = _area.Left + 18, right = _area.Right - 18, length = right - left;
+        dc.PushClip(new RectangleGeometry(_area, 15, 15));                    // fährt hinter dem Rand herein
+        if (fade > 0.01)
         {
-            var line = new StreamGeometry();
-            var fill = new StreamGeometry();
-            using (var l = line.Open())
-            using (var a = fill.Open())
+            dc.PushOpacity(fade);
+            var road = new Pen(white, 2) { StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round };
+            dc.DrawLine(road, new Point(left, _lineY), new Point(left + length * line, _lineY));
+            var stone = new Pen(white, 1.5) { LineJoin = PenLineJoin.Round };
+            foreach (var (u, w, h) in Stones)
             {
-                a.BeginFigure(new Point(_area.Left, _area.Bottom), true, true);
-                for (double x = _area.Left; x <= _area.Right; x += 4)
+                double x = Wrap(left + u * length - _scroll, left, length);
+                if (x - w / 2 < left || x + w / 2 > left + length * line) continue;
+                var g = new StreamGeometry();
+                using (var c = g.Open())                                     // Kuppe, die auf der Linie liegt
                 {
-                    var p = new Point(x, TrackY(x, scroll));
-                    if (x == _area.Left) l.BeginFigure(p, false, false); else l.LineTo(p, true, true);
-                    a.LineTo(p, true, false);
+                    c.BeginFigure(new Point(x - w / 2, _lineY), false, false);
+                    c.BezierTo(new Point(x - w / 2, _lineY - h * 1.3), new Point(x + w / 2, _lineY - h * 1.3), new Point(x + w / 2, _lineY), true, true);
                 }
-                a.LineTo(new Point(_area.Right, _area.Bottom), true, false);
+                dc.DrawGeometry(null, stone, g);
             }
-            var text = TryFindResource("TextBrush") as Brush ?? Brushes.White;
-            var accent = (TryFindResource("AccentBrush") as SolidColorBrush)?.Color ?? Colors.SteelBlue;
-            dc.PushClip(new RectangleGeometry(_area, 12, 12));
-            dc.PushOpacity(track);
-            dc.DrawGeometry(new LinearGradientBrush(Color.FromArgb(90, accent.R, accent.G, accent.B), Color.FromArgb(0, accent.R, accent.G, accent.B), 90),
-                            null, fill);
-            dc.DrawGeometry(null, new Pen(text, 2.2) { LineJoin = PenLineJoin.Round, StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round }, line);
-            // Staub hinter ihm
-            double hw = _hh * AvatarArt.Aspect;
-            double rt = scroll / (_area.Width * 0.45);
-            for (int k = 0; k < 5; k++)
+            foreach (var (u, dy) in Pebbles)
             {
-                double age = (rt * 1.8 + k / 5.0) % 1;
-                double x = center.X - hw - age * hw * 2.2;
-                dc.PushOpacity((1 - age) * 0.6);
-                dc.DrawEllipse(text, null, new Point(x, TrackY(x, scroll) - 3 - age * 6), 1.4, 1.4);
-                dc.Pop();
+                double x = Wrap(left + u * length - _scroll * 1.15, left, length);   // etwas schneller: liegen näher
+                if (x > left + length * line) continue;
+                dc.DrawEllipse(white, null, new Point(x, _lineY + dy), 0.9, 0.9);
             }
-            dc.Pop();
             dc.Pop();
         }
         AvatarArt.Draw(dc, pose, center, _hh, VisualTreeHelper.GetDpi(this).PixelsPerDip);
+        dc.Pop();
     }
+
+    private static double Wrap(double x, double left, double length) => left + ((x - left) % length + length) % length;
 }

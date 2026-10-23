@@ -42,7 +42,7 @@ public partial class MainWindow
         _demoTimer.Start();
         PreviewKeyDown += DemoKey;
         Motion.After(1200, () => _demoConnected = true);                   // kurz suchen, dann verbunden
-        Notice(NoticeKind.Info, "Demo · click the overlay · 1–6 zone · ↑↓ watts · 0 stop · S data · V link · B Bluetooth · A tour", 12);
+        Notice(NoticeKind.Info, "Demo · click the overlay, H for keys", 8);   // die Notch ist schmal: Tastenliste per H
     }
 
     private void DemoTick()
@@ -91,7 +91,7 @@ public partial class MainWindow
                 break;
             case Key.B: DemoBluetooth(!_demoBluetoothOff); break;
             case Key.A: if (_demoTourStep >= 0) StopTour(); else { _demoTourStep = -1; NextTourStep(); } break;
-            case Key.H: Notice(NoticeKind.Info, "1–6 zone · ↑↓ ±10 W (Shift ±50) · 0 stop · S data · V link · B Bluetooth · A tour", 10); break;
+            case Key.H: Notice(NoticeKind.Info, "1–6 zone · ↑↓ W · 0 stop · S data · V link · B BT · A tour", 10); break;
             default: return;
         }
         e.Handled = true;

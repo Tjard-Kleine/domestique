@@ -30,11 +30,12 @@
                 <Grid>
                     <!-- Auswahl gleitet zum gewählten Reiter und federt nach -->
                     <Border x:Name="TabPill" Height="36" Margin="3" CornerRadius="10" HorizontalAlignment="Left" Background="{DynamicResource AccentBrush}"/>
-                    <UniformGrid Columns="4">
+                    <UniformGrid Columns="5">
                         <RadioButton x:Name="LookTab" Style="{StaticResource SettingsTab}" Content="&#xE790;" ToolTip="Appearance" IsChecked="True" Checked="Tab_Checked"/>
                         <RadioButton x:Name="RiderTab" Style="{StaticResource SettingsTab}" Content="&#xE77B;" ToolTip="Rider" Checked="Tab_Checked"/>
                         <RadioButton x:Name="BluetoothTab" Style="{StaticResource SettingsTab}" Content="&#xE702;" ToolTip="Bluetooth" Checked="Tab_Checked"/>
                         <RadioButton x:Name="LibraryTab" Style="{StaticResource SettingsTab}" Content="&#xE8F1;" ToolTip="Library" Checked="Tab_Checked"/>
+                        <RadioButton x:Name="KeysTab" Style="{StaticResource SettingsTab}" Content="&#xE765;" ToolTip="Shortcuts" Checked="Tab_Checked"/>
                     </UniformGrid>
                 </Grid>
             </Border>
@@ -51,7 +52,7 @@
                                     <Border Height="62" CornerRadius="9" Background="#0B0C0F" Padding="8,6">
                                         <StackPanel>
                                             <Ellipse Width="6" Height="6" Fill="#3D7BFA" HorizontalAlignment="Right"/>
-                                            <TextBlock Text="213" FontFamily="Segoe UI Variable Display, Segoe UI" FontWeight="SemiBold" FontSize="20" Foreground="#F3F4F6"/>
+                                            <TextBlock Text="213" FontFamily="pack://application:,,,/Domestique.App;component/Fonts/#Archivo Black" FontSize="19" Foreground="#F3F4F6"/>
                                             <Border Height="3" CornerRadius="1.5" Background="#3D7BFA" Width="30" HorizontalAlignment="Left"/>
                                         </StackPanel>
                                     </Border>
@@ -62,7 +63,7 @@
                                             <Ellipse Width="6" Height="6" Fill="#FFD400" HorizontalAlignment="Right"/>
                                             <StackPanel Orientation="Horizontal">
                                                 <Rectangle Width="3" Height="18" Fill="#FFD400" Margin="0,0,5,0" RadiusX="1.5" RadiusY="1.5"/>
-                                                <TextBlock Text="213" FontFamily="Bahnschrift" FontWeight="Bold" FontStretch="Condensed" FontSize="21" Foreground="White">
+                                                <TextBlock Text="213" FontFamily="pack://application:,,,/Domestique.App;component/Fonts/#Archivo Black" FontSize="19" Foreground="White">
                                                     <TextBlock.RenderTransform><SkewTransform AngleX="-9"/></TextBlock.RenderTransform>
                                                 </TextBlock>
                                             </StackPanel>
@@ -71,20 +72,21 @@
                                     </Border>
                                 </RadioButton>
                                 <RadioButton x:Name="VintageTile" Style="{StaticResource StyleTile}" Tag="Vintage" Checked="Theme_Checked">
-                                    <Border Height="62" CornerRadius="9" Background="#EFE6D2" Padding="0,6,8,6">
-                                        <StackPanel>
-                                            <Ellipse Width="6" Height="6" Fill="#D4502E" HorizontalAlignment="Right"/>
-                                            <StackPanel Orientation="Horizontal">
-                                                <StackPanel Width="18" VerticalAlignment="Center" Margin="0,2,5,0">
-                                                    <Rectangle Height="3" Fill="#2E64AE"/>
-                                                    <Rectangle Height="3" Fill="#D8382E"/>
-                                                    <Rectangle Height="3" Fill="#EE8A2A"/>
-                                                    <Rectangle Height="3" Fill="#F3C143"/>
-                                                </StackPanel>
-                                                <TextBlock Text="213" FontFamily="Georgia" FontWeight="Bold" FontSize="19" Foreground="#2A211B"/>
+                                    <!-- wie Standard, dazu die vier Streifen unten rechts -->
+                                    <Border Height="62" CornerRadius="9" Background="#0B0C0F">
+                                        <Grid x:Name="VintagePreview">
+                                            <Grid HorizontalAlignment="Right" Width="34" ClipToBounds="True" IsHitTestVisible="False">
+                                                <Polygon Points="0,66 32,-4 39,-4 7,66" Fill="#008FFD"/>
+                                                <Polygon Points="7,66 39,-4 46,-4 14,66" Fill="#FC2E24"/>
+                                                <Polygon Points="14,66 46,-4 53,-4 21,66" Fill="#FDFEEA"/>
+                                                <Polygon Points="21,66 53,-4 60,-4 28,66" Fill="#FDC100"/>
+                                            </Grid>
+                                            <StackPanel Margin="8,6">
+                                                <Ellipse Width="6" Height="6" Fill="#3D7BFA" HorizontalAlignment="Right" Opacity="0"/>
+                                                <TextBlock Text="213" FontFamily="pack://application:,,,/Domestique.App;component/Fonts/#Archivo Black" FontSize="19" Foreground="#F3F4F6"/>
+                                                <Border Height="3" CornerRadius="1.5" Background="#3D7BFA" Width="30" HorizontalAlignment="Left"/>
                                             </StackPanel>
-                                            <Border Height="3" CornerRadius="1.5" Background="#D4502E" Width="30" HorizontalAlignment="Left" Margin="8,0,0,0"/>
-                                        </StackPanel>
+                                        </Grid>
                                     </Border>
                                 </RadioButton>
                             </UniformGrid>
@@ -99,7 +101,6 @@
                                         <TextBlock x:Name="OpacityValue" DockPanel.Dock="Right" Style="{StaticResource Value}"/>
                                         <TextBlock Text="Opacity" Style="{StaticResource CardTitle}"/>
                                     </DockPanel>
-                                    <TextBlock Text="Vintage stays almost opaque." Style="{StaticResource CardText}"/>
                                     <Slider x:Name="OpacitySlider" Style="{StaticResource ModernSlider}" Minimum="20" Maximum="100" Margin="0,4,0,0" ValueChanged="Look_Changed"/>
                                 </StackPanel>
                             </DockPanel>
@@ -133,6 +134,25 @@
                                 <StackPanel>
                                     <TextBlock Text="Map and profile" Style="{StaticResource CardTitle}"/>
                                     <TextBlock Text="Shown on the overview when a route is loaded." Style="{StaticResource CardText}"/>
+                                </StackPanel>
+                            </DockPanel>
+                        </Border>
+                        <!-- Werte der kleinen Notch; ihre Breite richtet sich nach der Anzahl -->
+                        <Border Style="{StaticResource SettingCard}">
+                            <DockPanel>
+                                <Border Style="{StaticResource IconTile}"><TextBlock Text="&#xE70E;" Style="{StaticResource IconGlyph}"/></Border>
+                                <StackPanel>
+                                    <TextBlock Text="Small notch" Style="{StaticResource CardTitle}"/>
+                                    <TextBlock Text="Values shown when minimized." Style="{StaticResource CardText}"/>
+                                    <WrapPanel x:Name="CompactChips" Margin="0,8,0,-6">
+                                        <CheckBox Style="{StaticResource Chip}" Tag="Power" Content="Power" Click="CompactChip_Click"/>
+                                        <CheckBox Style="{StaticResource Chip}" Tag="HeartRate" Content="Heart rate" Click="CompactChip_Click"/>
+                                        <CheckBox Style="{StaticResource Chip}" Tag="Cadence" Content="Cadence" Click="CompactChip_Click"/>
+                                        <CheckBox Style="{StaticResource Chip}" Tag="Speed" Content="Speed" Click="CompactChip_Click"/>
+                                        <CheckBox Style="{StaticResource Chip}" Tag="Distance" Content="Distance" Click="CompactChip_Click"/>
+                                        <CheckBox Style="{StaticResource Chip}" Tag="Climb" Content="Climb" Click="CompactChip_Click"/>
+                                        <CheckBox Style="{StaticResource Chip}" Tag="Time" Content="Time" Click="CompactChip_Click"/>
+                                    </WrapPanel>
                                 </StackPanel>
                             </DockPanel>
                         </Border>
@@ -324,6 +344,42 @@
                                    HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed"/>
                     </Grid>
                 </DockPanel>
+
+                <!-- ===== Tastenkürzel: Feld antippen, neue Tasten drücken ===== -->
+                <ScrollViewer x:Name="KeysPage" VerticalScrollBarVisibility="Auto" Visibility="Collapsed">
+                    <StackPanel Margin="0,0,6,0">
+                        <TextBlock Text="SHORTCUTS" Style="{StaticResource SectionHeader}"/>
+                        <TextBlock Style="{StaticResource CardText}" Margin="4,-2,0,10"
+                                   Text="They work in every app, also over a video. Tap a shortcut and press the new keys. Esc cancels, Delete removes it."/>
+                        <ItemsControl x:Name="HotkeyList" Focusable="False">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Style="{StaticResource SettingCard}" Padding="12,9">
+                                        <DockPanel>
+                                            <Button DockPanel.Dock="Right" Style="{StaticResource KeyButton}" Content="{Binding Keys}" Tag="{Binding RecordingTag}"
+                                                    VerticalAlignment="Center" Margin="10,0,0,0" Click="HotkeyButton_Click"
+                                                    PreviewKeyDown="HotkeyButton_PreviewKeyDown" PreviewKeyUp="HotkeyButton_PreviewKeyUp"
+                                                    LostKeyboardFocus="HotkeyButton_LostKeyboardFocus"/>
+                                            <StackPanel VerticalAlignment="Center">
+                                                <TextBlock Text="{Binding Label}" Style="{StaticResource CardTitle}"/>
+                                                <TextBlock x:Name="Note" Text="{Binding Note}" Style="{StaticResource CardText}" Visibility="Collapsed"/>
+                                            </StackPanel>
+                                        </DockPanel>
+                                    </Border>
+                                    <DataTemplate.Triggers>
+                                        <DataTrigger Binding="{Binding HasNote}" Value="True">
+                                            <Setter TargetName="Note" Property="Visibility" Value="Visible"/>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding Warn}" Value="True">
+                                            <Setter TargetName="Note" Property="Foreground" Value="{DynamicResource WarningBrush}"/>
+                                        </DataTrigger>
+                                    </DataTemplate.Triggers>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <Button Content="Reset to defaults" Style="{StaticResource PillButton}" HorizontalAlignment="Left" Margin="0,2,0,8" Click="ResetHotkeys_Click"/>
+                    </StackPanel>
+                </ScrollViewer>
             </Grid>
         </DockPanel>
     </Border>
