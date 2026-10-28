@@ -1,11 +1,11 @@
-using Windows.Devices.Radios;
+﻿using Windows.Devices.Radios;
 
 namespace Domestique.Ble;
 
-// Meldet das Ein- und Ausschalten des Bluetooth-Adapters sofort, statt auf den nächsten Suchversuch zu warten.
+// Reports the Bluetooth adapter being switched on or off right away instead of waiting for the next scan.
 public static class BluetoothRadio
 {
-    // Liefert den Adapter (der Aufrufer muss ihn halten, sonst endet das Ereignis) oder null, wenn es keinen gibt.
+    // Returns the radio (the caller must keep a reference, otherwise the event stops) or null without one.
     public static async Task<Radio?> WatchAsync(Action<bool> onChanged)
     {
         try
@@ -16,6 +16,6 @@ public static class BluetoothRadio
             radio.StateChanged += (r, _) => onChanged(r.State == RadioState.On);
             return radio;
         }
-        catch (Exception) { return null; }                         // ohne Funk-Zugriff greift die Erkennung über die Suche
+        catch (Exception) { return null; }                         // without radio access, scans detect Bluetooth being off
     }
 }

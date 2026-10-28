@@ -2,12 +2,12 @@ using System.Text;
 
 namespace Domestique.Core;
 
-// Rohdaten-Log unter %LOCALAPPDATA%\Domestique\raw.log. Die Datei bleibt offen statt pro Zeile neu geöffnet zu
-// werden, jede Zeile wird trotzdem sofort geschrieben. Ist sie beim Start größer als 10 MB, wird sie zu raw.old.log.
+// Raw data log in %LOCALAPPDATA%\Domestique\raw.log. Stays open, flushes every line,
+// rotates to raw.old.log when larger than 10 MB at startup.
 public static class RawLog
 {
     private const long MaxBytes = 10 * 1024 * 1024;
-    public static string LogFile { get; } = Path.Combine(
+    private static readonly string LogFile = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Domestique", "raw.log");
     private static readonly object Gate = new();
     private static StreamWriter? _writer;
@@ -23,7 +23,7 @@ public static class RawLog
                 _writer ??= Open();
                 _writer.WriteLine($"{DateTime.Now:HH:mm:ss.fff} {text}");
             }
-            catch (IOException) { }                               // das Log darf die App nie stören
+            catch (IOException) { }                               // logging must never break the app
         }
     }
 
@@ -33,6 +33,6 @@ public static class RawLog
         var file = new FileInfo(LogFile);
         if (file.Exists && file.Length > MaxBytes) file.MoveTo(Path.ChangeExtension(LogFile, ".old.log"), overwrite: true);
         var stream = new FileStream(LogFile, FileMode.Append, FileAccess.Write, FileShare.ReadWrite);
-        return new StreamWriter(stream, new UTF8Encoding(true)) { AutoFlush = true };   // BOM: Umlaute auch in Notepad
+        return new StreamWriter(stream, new UTF8Encoding(true)) { AutoFlush = true };
     }
 }

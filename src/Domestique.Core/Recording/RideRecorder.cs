@@ -1,7 +1,7 @@
 ﻿namespace Domestique.Core.Recording;
 
-// Eine Fahrt: startet mit dem ersten Tritt, schreibt genau einen Messpunkt pro Sekunde und erzeugt beim Export
-// die TCX-Datei. Die Zeit kommt als monotone Zeitspanne (Stopwatch) herein, damit Uhrzeitsprünge nichts verschieben.
+// One ride: starts with the first pedal stroke, records exactly one sample per second and exports a TCX file.
+// Time comes in as a monotonic span (Stopwatch) so clock jumps don't shift anything.
 public sealed class RideRecorder(string folder, Action<string>? log = null)
 {
     private DateTime _startUtc;
@@ -9,8 +9,6 @@ public sealed class RideRecorder(string folder, Action<string>? log = null)
     private double _startDistanceM;
     private int _lastSecond;
     public Recorder? Current { get; private set; }
-
-    public TimeSpan? Elapsed(TimeSpan now) => Current is null ? null : now - _startAt;
 
     private void Log(string text) => (log ?? RawLog.Note)(text);
 
@@ -32,12 +30,12 @@ public sealed class RideRecorder(string folder, Action<string>? log = null)
         Current.Add(new Sample(_startUtc.AddSeconds(second), powerW, cadenceRpm, heartRateBpm, speedMps, distanceM - _startDistanceM));
     }
 
-    // Schreibt die TCX-Datei und beendet die Fahrt. null, solange noch keine zwei Messpunkte da sind.
+    // Writes the TCX file and ends the ride; null until there are at least two samples.
     public string? Export()
     {
         if (Current is null || Current.Samples.Count < 2) return null;
         var recorder = Current;
-        Current = null;                                           // die nächste Fahrt beginnt neu
+        Current = null;
         recorder.Dispose();
         string tcx = Path.ChangeExtension(recorder.CsvPath, ".tcx");
         TcxWriter.Write(tcx, recorder.Samples);
@@ -45,7 +43,7 @@ public sealed class RideRecorder(string folder, Action<string>? log = null)
         return tcx;
     }
 
-    // Nach einem Absturz liegt nur die CSV da: daraus die TCX-Datei erzeugen. Liefert die geretteten Dateien.
+    // After a crash only the CSV exists: builds the missing TCX files and returns them.
     public static List<string> RecoverUnexported(string folder, Action<string>? log = null)
     {
         var recovered = new List<string>();

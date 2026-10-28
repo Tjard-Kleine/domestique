@@ -1,7 +1,6 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Xml.Linq;
 using Domestique.Core.Recording;
-using Xunit;
 
 namespace Domestique.Tests;
 
@@ -54,7 +53,7 @@ public class RecordingTests
     [Fact]
     public void Tcx_has_totals_power_and_heart_rate()
     {
-        var doc = TcxWriter.Build(Ride(601, hr: 150));                       // 10 Minuten mit 200 W
+        var doc = TcxWriter.Build(Ride(601, hr: 150));                       // 10 minutes at 200 W
         var lap = doc.Descendants(Ns + "Lap").Single();
         Assert.Equal("600", lap.Element(Ns + "TotalTimeSeconds")!.Value);
         Assert.Equal("6000.0", lap.Element(Ns + "DistanceMeters")!.Value);
@@ -62,7 +61,7 @@ public class RecordingTests
         Assert.Equal(601, doc.Descendants(Ns + "Trackpoint").Count());
         Assert.All(doc.Descendants(Ext + "Watts"), w => Assert.Equal("200", w.Value));
         Assert.All(doc.Descendants(Ns + "HeartRateBpm"), h => Assert.Equal("150", h.Element(Ns + "Value")!.Value));
-        Assert.Empty(doc.Descendants(Ns + "Position"));                        // Indoor: keine GPS-Daten
+        Assert.Empty(doc.Descendants(Ns + "Position"));                        // indoor: no GPS data
     }
 
     [Fact]
@@ -76,7 +75,7 @@ public class RecordingTests
     [Fact]
     public void Tcx_leaves_out_cadence_and_heart_rate_when_never_measured()
     {
-        var doc = TcxWriter.Build(Ride(10));                                  // z. B. D100 ohne Gurt
+        var doc = TcxWriter.Build(Ride(10));                                  // e.g. D100 without a strap
         Assert.Empty(doc.Descendants(Ns + "Cadence"));
         Assert.Empty(doc.Descendants(Ns + "HeartRateBpm"));
     }
@@ -98,18 +97,18 @@ public class RecordingTests
     public void Ride_starts_with_the_first_pedal_stroke()
     {
         var ride = new RideRecorder(Directory.CreateTempSubdirectory().FullName, _ => { });
-        ride.Tick(TimeSpan.FromSeconds(1), Start, 0, 0, null, 0, 0);       // steht noch
+        ride.Tick(TimeSpan.FromSeconds(1), Start, 0, 0, null, 0, 0);       // still standing
         Assert.Null(ride.Current);
         ride.Tick(TimeSpan.FromSeconds(2), Start, 150, 0, null, 2, 500);
         Assert.NotNull(ride.Current);
-        Assert.Equal(0, ride.Current.Samples[0].DistanceM);                   // Distanz zählt ab Fahrtbeginn
+        Assert.Equal(0, ride.Current.Samples[0].DistanceM);                   // distance counts from the start of the ride
     }
 
     [Fact]
     public void Ride_records_exactly_one_sample_per_second()
     {
         var ride = new RideRecorder(Directory.CreateTempSubdirectory().FullName, _ => { });
-        for (int tick = 0; tick <= 40; tick++)                                 // 10 s im 250-ms-Takt, leicht verzögert
+        for (int tick = 0; tick <= 40; tick++)                                 // 10 s in 250 ms ticks, slightly late
             ride.Tick(TimeSpan.FromMilliseconds(tick * 250 + 3), Start, 200, 90, null, 10, tick * 2.5);
         var times = ride.Current!.Samples.Select(s => s.TimeUtc).ToList();
         Assert.Equal(11, times.Count);
@@ -121,7 +120,7 @@ public class RecordingTests
     {
         var ride = new RideRecorder(Directory.CreateTempSubdirectory().FullName, _ => { });
         ride.Tick(TimeSpan.FromSeconds(0), Start, 200, 0, null, 10, 0);
-        ride.Tick(TimeSpan.FromSeconds(1), Start.AddHours(-1), 200, 0, null, 10, 10);   // Uhr springt zurück
+        ride.Tick(TimeSpan.FromSeconds(1), Start.AddHours(-1), 200, 0, null, 10, 10);   // clock jumps back
         Assert.Equal(Start.AddSeconds(1), ride.Current!.Samples[1].TimeUtc);
     }
 
@@ -130,7 +129,7 @@ public class RecordingTests
     {
         string folder = Directory.CreateTempSubdirectory().FullName;
         var ride = new RideRecorder(folder, _ => { });
-        Assert.Null(ride.Export());                                            // noch nichts gefahren
+        Assert.Null(ride.Export());                                            // nothing ridden yet
         for (int s = 0; s < 5; s++) ride.Tick(TimeSpan.FromSeconds(s), Start, 200, 0, null, 10, s * 10);
         string tcx = ride.Export()!;
         Assert.True(File.Exists(tcx));
@@ -145,14 +144,14 @@ public class RecordingTests
         var ride = new RideRecorder(folder, _ => { });
         for (int s = 0; s < 5; s++) ride.Tick(TimeSpan.FromSeconds(s), Start, 200, 0, null, 10, s * 10);
         string csv = ride.Current!.CsvPath;
-        ride.Current.Dispose();                                                // Absturz: kein Export
+        ride.Current.Dispose();                                                // crash: no export
 
         var recovered = RideRecorder.RecoverUnexported(folder, _ => { });
         Assert.Equal(Path.ChangeExtension(csv, ".tcx"), Assert.Single(recovered));
-        Assert.Empty(RideRecorder.RecoverUnexported(folder, _ => { }));        // beim zweiten Start nichts mehr zu tun
+        Assert.Empty(RideRecorder.RecoverUnexported(folder, _ => { }));        // nothing left to do on the second start
     }
 
-    // n Sekunden mit 200 W und 10 m/s
+    // n seconds at 200 W and 10 m/s
     private static List<Sample> Ride(int seconds, double cadence = 0, int? hr = null) =>
         Enumerable.Range(0, seconds)
             .Select(i => new Sample(Start.AddSeconds(i), 200, cadence, hr, 10, i * 10.0))

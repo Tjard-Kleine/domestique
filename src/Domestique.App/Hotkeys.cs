@@ -2,11 +2,10 @@
 
 namespace Domestique.App;
 
-// Globale Tastenkürzel: wirken in jeder App (z. B. über dem Video). Jede Aktion hat ein Standardkürzel und lässt sich in
-// den Einstellungen ändern. Die Zahl ist zugleich die Kennung bei RegisterHotKey.
+// Global shortcuts that work in every app (e.g. over a video). The value doubles as the RegisterHotKey id.
 public enum HotkeyAction { ErgUp = 1, ErgDown, ErgToggle, ClickThrough, Compact, Map, Settings }
 
-// Tastenkombination aus Umschalttasten und einer Taste; gespeichert als lesbarer Text, z. B. „Ctrl+Alt+PageUp“
+// Modifiers plus one key, stored as readable text such as "Ctrl+Alt+PageUp".
 public readonly record struct KeyCombo(ModifierKeys Modifiers, Key Key)
 {
     private static readonly (ModifierKeys Flag, string Name)[] Parts =
@@ -28,10 +27,10 @@ public readonly record struct KeyCombo(ModifierKeys Modifiers, Key Key)
 
     public override string ToString() => string.Join("+", Names(Modifiers).Append(Key.ToString()));
 
-    // für Menü, Tooltips und Einstellungen: „Ctrl+Alt+PgUp“
+    // For menus, tooltips and settings: "Ctrl+Alt+PgUp".
     public string Display => string.Join("+", Names(Modifiers).Append(KeyName(Key)));
 
-    // nur die Umschalttasten, z. B. „Ctrl+Alt“ (während man ein Kürzel drückt)
+    // Only the modifiers, e.g. "Ctrl+Alt" while a shortcut is being pressed.
     public static string ModifierText(ModifierKeys mods) => string.Join("+", Names(mods));
 
     private static IEnumerable<string> Names(ModifierKeys mods) => Parts.Where(p => mods.HasFlag(p.Flag)).Select(p => p.Name);
@@ -53,10 +52,11 @@ public readonly record struct KeyCombo(ModifierKeys Modifiers, Key Key)
     };
 }
 
+// Actions, labels and default shortcuts. Users can change them in the settings.
 public static class Hotkeys
 {
-    // Standard: alles mit Strg+Alt, Buchstaben nach dem Anfangsbuchstaben. Bewusst nicht belegt: Strg+Alt+Pfeile (drehen bei
-    // manchen Grafiktreibern den Bildschirm, in VS Code mehrere Cursor) und AltGr-Zeichen deutscher Tastaturen (@ € µ { [ ] } \ ~ |).
+    // Defaults use Ctrl+Alt with the initial letter. Avoided on purpose: Ctrl+Alt+arrows (rotate the screen on some
+    // graphics drivers, multi-cursor in VS Code) and AltGr characters of German keyboards (@ € µ { [ ] } \ ~ |).
     public static readonly (HotkeyAction Action, string Label, KeyCombo Default)[] All =
     [
         (HotkeyAction.ErgUp, "ERG +10 W", new(ModifierKeys.Control | ModifierKeys.Alt, Key.PageUp)),
@@ -68,7 +68,7 @@ public static class Hotkeys
         (HotkeyAction.Settings, "Settings", new(ModifierKeys.Control | ModifierKeys.Alt, Key.S)),
     ];
 
-    // ohne Eintrag gilt der Standard; ein leerer Eintrag heißt „kein Kürzel“
+    // No entry means the default; an empty entry means no shortcut.
     public static KeyCombo? Get(AppSettings s, HotkeyAction action) =>
         s.Hotkeys.TryGetValue(action.ToString(), out var text) ? KeyCombo.Parse(text) : All.First(h => h.Action == action).Default;
 
@@ -76,9 +76,9 @@ public static class Hotkeys
 
     public static string Label(HotkeyAction action) => All.First(h => h.Action == action).Label;
 
-    // Halten wiederholt nur ERG ±; Umschalten soll beim Halten nicht flackern (MOD_NOREPEAT)
+    // Only ERG ± repeat while held; toggles must not flicker (MOD_NOREPEAT).
     public static uint Repeat(HotkeyAction action) => action is HotkeyAction.ErgUp or HotkeyAction.ErgDown ? 0 : 0x4000u;
 
-    // für Texte: „Ctrl+Alt+C“ oder null ohne Kürzel
+    // "Ctrl+Alt+C", or null without a shortcut.
     public static string? Text(AppSettings s, HotkeyAction action) => Get(s, action)?.Display;
 }

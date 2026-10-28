@@ -1,15 +1,14 @@
-﻿// Öffnen mit Feder (response 0,5, Dämpfung 0,72) und Schließen mit der 340-ms-Kurve wie in Coucou
-// (https://github.com/Louis-CFM/coucou, windows/src/island/island.ts), MIT-Lizenz, siehe THIRD-PARTY-NOTICES.md.
+﻿// Open with a spring (response 0.5, damping 0.72) and close with the 340 ms curve as in Coucou
+// (https://github.com/Louis-CFM/coucou, windows/src/island/island.ts), MIT License, see THIRD-PARTY-NOTICES.md.
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 
 namespace Domestique.App;
 
-// Form des Overlays während Öffnen, Schließen, Minimieren und Andocken. Das Panel behält sein Layout; sichtbar ist nur
-// ein Ausschnitt (Clip), der oben mittig sitzt. Wächst er über die volle Größe hinaus (Federn), wird das Panel kurz
-// minimal skaliert, damit das Nachfedern zu sehen ist. Die Notch-Ohren hängen immer an den Kanten.
-// Läuft nur, solange sich etwas bewegt; danach ist der Clip weg und nichts kostet mehr.
+// Shape of the overlay while opening, closing, minimizing and docking. The panel keeps its layout; only a clipped
+// part, centered at the top, is visible. When the spring overshoots the full size the panel is scaled slightly
+// so the bounce shows. The notch ears stay attached to the edges. Runs only while moving; at rest there is no clip.
 internal sealed class Island
 {
     private readonly Border _shell;
@@ -17,7 +16,7 @@ internal sealed class Island
     private readonly Tracked _w = new(0), _h = new(0), _r = new(0);
     private readonly FrameLoop _loop;
     private Action? _done;
-    private bool _opening;                                                    // geht bis zur vollen Größe auf
+    private bool _opening;                                                    // opening to full size
 
     public Island(Border shell, UIElement leftEar, UIElement rightEar)
     {
@@ -41,7 +40,7 @@ internal sealed class Island
 
     public bool Docked { get; set; }
     public bool Animating => _w.Animating || _h.Animating || _r.Animating;
-    // sichtbarer Teil des Panels in seinen eigenen Koordinaten
+    // Visible part of the panel in its own coordinates.
     public Rect VisibleRect
     {
         get
@@ -57,14 +56,14 @@ internal sealed class Island
     public double FullHeight => _shell.ActualHeight;
     private double FullRadius => _shell.CornerRadius.BottomLeft;
 
-    // sofort auf diese Größe (z. B. die kleine Pille vor dem Aufgehen)
+    // Jumps to this size (e.g. the small pill before opening).
     public void Jump(double w, double h, double r)
     {
         _w.Jump(w); _h.Jump(h); _r.Jump(r);
         Apply();
     }
 
-    // Aufgehen mit Feder bis zur vollen Größe des Panels
+    // Opens with a spring to the full panel size.
     public void Open(Action? done = null, double response = 0.5, double damping = 0.72)
     {
         _shell.UpdateLayout();
@@ -75,7 +74,7 @@ internal sealed class Island
         Run(done);
     }
 
-    // Zusammenziehen ohne Überschwingen (Coucou: 340 ms, cubic-bezier(.45, 0, .2, 1))
+    // Closes without overshoot (Coucou: 340 ms, cubic-bezier(.45, 0, .2, 1)).
     public void Close(double w, double h, double r, Action? done = null, double ms = 340)
     {
         if (!Animating && _shell.Clip is null) { _w.Jump(FullWidth); _h.Jump(FullHeight); _r.Jump(FullRadius); }
@@ -88,7 +87,7 @@ internal sealed class Island
     private void Run(Action? done)
     {
         _done = done;
-        if (!Motion.Enabled)                                                 // Animationseffekte aus: sofort ans Ziel
+        if (!Motion.Enabled)                                                 // animations turned off in Windows: jump to the end
         {
             _w.Jump(_w.TargetValue); _h.Jump(_h.TargetValue); _r.Jump(_r.TargetValue);
             Release(force: _opening);
@@ -111,14 +110,14 @@ internal sealed class Island
         scale.ScaleY = Math.Max(1, h / fh);
         double cw = Math.Min(w, fw), ch = Math.Min(h, fh);
         _shell.Clip = Shape(new Rect((fw - cw) / 2, 0, cw, ch), Docked ? 0 : r, r);
-        double edge = (fw - w) / 2;                                          // Ohren an die Kanten
+        double edge = (fw - w) / 2;                                          // ears to the edges
         Motion.Shift(_leftEar).X = edge;
         Motion.Shift(_rightEar).X = -edge;
         double ear = Math.Clamp(h / 14, 0, 1);
         Motion.Scale(_leftEar).ScaleY = Motion.Scale(_rightEar).ScaleY = ear;
     }
 
-    // nach einem Wechsel des Layouts (z. B. minimiert): sofort volle Größe, ohne Clip
+    // After a layout change (e.g. minimized): full size at once, no clip.
     public void Reset()
     {
         _loop.Stop();
@@ -128,7 +127,7 @@ internal sealed class Island
         Release(force: true);
     }
 
-    // Ruhe: Panel wieder ganz normal, ohne Clip und Skalierung
+    // At rest: no clip, no scale.
     private void Release(bool force = false)
     {
         if (!force && (Math.Abs(_w.Value - FullWidth) > 0.5 || Math.Abs(_h.Value - FullHeight) > 0.5)) return;
@@ -139,7 +138,7 @@ internal sealed class Island
         Motion.Scale(_leftEar).ScaleY = Motion.Scale(_rightEar).ScaleY = 1;
     }
 
-    // Rechteck mit eigenen Radien oben und unten (angedockt: oben eckig)
+    // Rectangle with separate top and bottom radii (docked: square top).
     private static Geometry Shape(Rect r, double top, double bottom)
     {
         var g = new StreamGeometry();

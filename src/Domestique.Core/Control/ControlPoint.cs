@@ -4,16 +4,16 @@ using Domestique.Core.Protocol;
 
 namespace Domestique.Core.Control;
 
-// Befehlsschlange für den FTMS Control Point (Review #2 und #3). Kennt kein Bluetooth: geschrieben wird über den
-// übergebenen Delegaten, Antworten (Indications von 0x2AD9) und Status (0x2ADA) reicht der Aufrufer herein.
+// Command queue for the FTMS Control Point. Has no Bluetooth dependency: commands are written through the given
+// delegate; the caller passes in indications (0x2AD9) and machine status (0x2ADA).
 public sealed class ControlPoint : IAsyncDisposable
 {
-    private static readonly TimeSpan RegainCooldown = TimeSpan.FromSeconds(5);    // kein Ping-Pong mit einer anderen App
+    private static readonly TimeSpan RegainCooldown = TimeSpan.FromSeconds(5);    // no ping-pong with another app
 
     private readonly Func<byte[], CancellationToken, Task<bool>> _write;
     private readonly TimeSpan _timeout;
     private readonly Action<string> _log;
-    private readonly SemaphoreSlim _gate = new(1, 1);                             // immer nur ein Befehl unterwegs
+    private readonly SemaphoreSlim _gate = new(1, 1);                             // one command in flight
     private readonly Channel<byte[]> _targets = Channel.CreateBounded<byte[]>(
         new BoundedChannelOptions(1) { FullMode = BoundedChannelFullMode.DropOldest, SingleReader = true });
     private readonly CancellationTokenSource _stop = new();
@@ -32,14 +32,14 @@ public sealed class ControlPoint : IAsyncDisposable
 
     public bool HasControl { get; private set; }
 
-    // Indication vom Control Point: nur die Antwort auf den gerade wartenden Befehl zählt.
+    // Only the response to the pending command counts.
     public void OnIndication(byte[] bytes)
     {
         if (ControlResponse.TryParse(bytes) is { } r && Volatile.Read(ref _pending) is { } p && p.OpCode == r.RequestOpCode)
             p.Response.TrySetResult(r);
     }
 
-    // Einmaliger Befehl: senden und auf die passende Antwort warten. null = keine Antwort in der Zeit.
+    // Sends a command and waits for its response; null on timeout.
     public async Task<ControlResponse?> SendAsync(byte[] command)
     {
         await _gate.WaitAsync(_stop.Token);
@@ -60,23 +60,23 @@ public sealed class ControlPoint : IAsyncDisposable
         }
     }
 
-    // Bei „Kontrolle nicht erlaubt“ (0x05) einmal neu anfordern und wiederholen.
+    // On "control not permitted" (0x05) requests control once and retries.
     public async Task<bool> SendWithControlAsync(byte[] command)
     {
         var r = await SendAsync(command);
         if (r?.Result == 0x05 && await RequestControlAsync()) r = await SendAsync(command);
-        if (r?.Success == true) HasControl = true;                               // manche Trainer beantworten Request Control nicht
+        if (r?.Success == true) HasControl = true;                               // some trainers never answer Request Control
         return r?.Success == true;
     }
 
-    // Für Zielwerte (Watt, Steigung): der neueste ersetzt einen wartenden, damit sich nichts staut.
+    // For targets (power, grade): the newest replaces a waiting one so nothing piles up.
     public void SetTarget(byte[] command)
     {
         Volatile.Write(ref _lastTarget, command);
         _targets.Writer.TryWrite(command);
     }
 
-    // Beim Verbinden und nach Kontrollverlust: Kontrolle holen, starten, letzten Zielwert erneut senden.
+    // On connect and after losing control: request control, start, resend the last target.
     public async Task<bool> TakeControlAsync()
     {
         try
@@ -86,12 +86,12 @@ public sealed class ControlPoint : IAsyncDisposable
             if (Volatile.Read(ref _lastTarget) is { } t) _targets.Writer.TryWrite(t);
             return true;
         }
-        catch (OperationCanceledException) { return false; }                     // beim Beenden
+        catch (OperationCanceledException) { return false; }                     // shutting down
         catch (Exception ex) { _log("Control Point: " + ex.Message); return false; }
     }
 
-    // Fitness Machine Status: nur 0xFF heißt Kontrolle verloren. 0x01 (Reset) schickt z. B. der D100 als Antwort
-    // auf Request Control, das ist kein Verlust. Höchstens alle 5 s zurückholen.
+    // Only status 0xFF means control was lost. 0x01 (reset) is e.g. the D100's reply to Request Control.
+    // Takes control back at most every 5 s.
     public Task OnMachineStatus(byte[] status)
     {
         if (status.Length == 0 || status[0] != 0xFF) return Task.CompletedTask;
@@ -103,7 +103,7 @@ public sealed class ControlPoint : IAsyncDisposable
         return TakeControlAsync();
     }
 
-    // Verbindung weg: Kontrolle gilt als verloren, nach dem Reconnect holt TakeControlAsync sie zurück.
+    // After a reconnect TakeControlAsync gets control back.
     public void OnDisconnected() => HasControl = false;
 
     private async Task<bool> RequestControlAsync() =>
@@ -123,7 +123,7 @@ public sealed class ControlPoint : IAsyncDisposable
                 catch (Exception ex) when (ex is not OperationCanceledException) { _log("Control Point: " + ex.Message); }
             }
         }
-        catch (OperationCanceledException) { }                                    // beim Beenden
+        catch (OperationCanceledException) { }                                    // shutting down
     }
 
     public async ValueTask DisposeAsync()

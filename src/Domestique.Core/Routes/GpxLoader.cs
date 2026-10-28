@@ -3,33 +3,32 @@ using System.Xml.Linq;
 
 namespace Domestique.Core.Routes;
 
-// GPX-Verarbeitung in den fünf Schritten aus „Strecken & Physik“.
+// Turns a GPX file into a route on a fixed 10 m grid with smoothed elevation and clamped grades.
 public static class GpxLoader
 {
-    public const double StepM = 10;                 // Rasterabstand
-    private const double SmoothM = 100;             // Glättungsfenster
+    public const double StepM = 10;                 // grid spacing
+    private const double SmoothM = 100;             // smoothing window
     private const double MinGrade = -10, MaxGrade = 20;
 
     public static Route Load(string xml, string name)
     {
-        // 1. Punkte lesen: Track bevorzugt, sonst Route; Namespace egal
+        // Track points preferred, otherwise route points; any namespace
         var all = XDocument.Parse(xml).Descendants().ToList();
         var nodes = all.Where(e => e.Name.LocalName == "trkpt").ToList();
         if (nodes.Count == 0) nodes = all.Where(e => e.Name.LocalName == "rtept").ToList();
         if (nodes.Count < 2) throw new FormatException("The GPX file contains no track.");
         var raw = nodes.Select(e => (
-            Lat: Num(e.Attribute("lat")?.Value, "Breite"),
+            Lat: Num(e.Attribute("lat")?.Value, "latitude"),
             Lon: Num(e.Attribute("lon")?.Value, "longitude"),
             Ele: Num(e.Elements().FirstOrDefault(c => c.Name.LocalName == "ele")?.Value, "elevation"))).ToList();
 
-        // 2. aufsummierte Distanz
         var dist = new double[raw.Count];
         for (int i = 1; i < raw.Count; i++)
             dist[i] = dist[i - 1] + Haversine(raw[i - 1].Lat, raw[i - 1].Lon, raw[i].Lat, raw[i].Lon);
         double length = dist[^1];
         if (length < 2 * StepM) throw new FormatException("The route is shorter than 20 m.");
 
-        // 3. auf festes Raster umrechnen (linear interpolieren)
+        // Resample onto the grid (linear interpolation)
         int count = (int)(length / StepM) + 1;
         var grid = new (double D, double Lat, double Lon, double Ele)[count];
         for (int i = 0, j = 0; i < count; i++)
@@ -42,7 +41,7 @@ public static class GpxLoader
             grid[i] = (d, a.Lat + (b.Lat - a.Lat) * f, a.Lon + (b.Lon - a.Lon) * f, a.Ele + (b.Ele - a.Ele) * f);
         }
 
-        // 4. Höhe glätten (gleitendes Mittel über ±50 m), sonst erzeugt GPS-Rauschen Steigungsspitzen
+        // Moving average over ±50 m, otherwise GPS noise creates grade spikes
         int half = (int)(SmoothM / StepM / 2);
         var smooth = new double[count];
         for (int i = 0; i < count; i++)
@@ -53,7 +52,6 @@ public static class GpxLoader
             smooth[i] = sum / (to - from + 1);
         }
 
-        // 5. Steigung pro Abschnitt, begrenzt
         var points = new RoutePoint[count];
         for (int i = 0; i < count; i++)
         {

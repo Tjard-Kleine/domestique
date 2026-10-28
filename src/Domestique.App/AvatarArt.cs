@@ -6,24 +6,24 @@ namespace Domestique.App;
 
 public enum Mood { Idle, Search, Sleep, Happy, Dizzy, Focus, Strain, Content, Squint, Love }
 
-// Busy: sucht („…“), Done: verbunden oder geladen (grüner Haken), Warning: Steuerung verloren (!), Settings: Zahnrad
+// Busy: searching ("…"), Done: connected or loaded (green check), Warning: control lost (!), Settings: gear
 internal enum BadgeKind { None, Busy, Done, Warning, Settings }
 
-// Alles, was ein Bild des Avatars ausmacht. Längen in Vielfachen der halben Körperhöhe (hh).
+// Everything that makes up one avatar frame. Lengths are multiples of the half body height (hh).
 internal sealed class AvatarPose
 {
     public Mood Face = Mood.Idle;
     public double Open = 1, EyeScale = 1, LookX, LookY;
-    public double Sx = 1, Sy = 1, Ox, Oy, Tilt;          // Stauchen, Versatz, Neigung (rad)
-    public double HandL, HandR, Wave = -1;               // Hände 0…1, Winken: Sekunden seit Beginn, −1 = nicht
-    public double Halo = 0.6, HaloSpread = 0.72;        // Schein: Stärke und Größe (1 = so weit wie beim Start)
-    public double Tint, Badge, Fx = -1;                 // Fx: Sekunden seit Herzchen, −1 = keine
+    public double Sx = 1, Sy = 1, Ox, Oy, Tilt;          // squash, offset, tilt (rad)
+    public double HandL, HandR, Wave = -1;               // hands 0…1; wave: seconds since start, −1 = none
+    public double Halo = 0.6, HaloSpread = 0.72;        // glow strength and size (1 = as wide as at launch)
+    public double Tint, Badge, Fx = -1;                 // Fx: seconds since hearts started, −1 = none
     public Color HaloColor = Colors.White, TintColor = Color.FromRgb(127, 180, 234);
     public BadgeKind BadgeKind;
 
     public AvatarPose Clone() => (AvatarPose)MemberwiseClone();
 
-    // Weicher Übergang zwischen zwei Posen, z. B. vom Start-Avatar in den Avatar der Übersicht
+    // Smooth blend of two poses, e.g. from the launch avatar into the overview avatar.
     public static AvatarPose Lerp(AvatarPose a, AvatarPose b, double k)
     {
         static double L(double x, double y, double t) => x + (y - x) * t;
@@ -42,11 +42,11 @@ internal sealed class AvatarPose
     }
 }
 
-// Zeichnet den Begleiter „Domestique“: ein ganz weißer, weicher Körper mit leichtem Schein, freistehende Hände
-// (rund links, länglich rechts), ovale Augen mit Glanzpunkt und rosige Wangen. Eigene Figur im Stil der Sheets.
+// Draws the companion: a soft white body with a light glow, floating hands (round left, long right),
+// oval eyes with a highlight and rosy cheeks.
 internal static class AvatarArt
 {
-    public const double Aspect = 1.277;                              // Körperbreite zu Körperhöhe
+    public const double Aspect = 1.277;                              // body width to body height
 
     private static readonly Brush White = Frozen(new LinearGradientBrush(
         new GradientStopCollection { new(Color.FromRgb(252, 252, 253), 0), new(Color.FromRgb(232, 234, 238), 1) }, new Point(0.75, 0), new Point(0.25, 1)));
@@ -65,7 +65,7 @@ internal static class AvatarArt
     private static readonly Brush GearBrush = Frozen(new SolidColorBrush(Color.FromRgb(0x8A, 0x90, 0x9C)));
     private static readonly Brush ZBrush = Frozen(new SolidColorBrush(Color.FromArgb(0xC0, 0xB8, 0xC0, 0xD0)));
 
-    // Größe des Körpers in einem Feld der Größe w × h und sein Mittelpunkt
+    // Body size inside a w × h box, and its center.
     public static double HalfHeight(double w, double h) => Math.Min(h * 0.36, w * 0.39 / Aspect);
     public static Point Center(double w, double h) => new(w / 2, h * 0.53);
 
@@ -86,7 +86,7 @@ internal static class AvatarArt
         dc.DrawGeometry(White, Edge, body);
         if (p.Tint > 0.002)
         {
-            // Farbe steigt von unten in den Körper (wie im Sheet am Ende des Starts)
+            // zone color rises from the bottom
             var tint = new LinearGradientBrush(new GradientStopCollection
             {
                 new(Color.FromArgb((byte)(255 * Math.Min(1, p.Tint)), p.TintColor.R, p.TintColor.G, p.TintColor.B), 1),
@@ -104,7 +104,7 @@ internal static class AvatarArt
         if (p.Fx >= 0) DrawHearts(dc, p.Fx, at, hw, hh);
     }
 
-    // Schein: zwei weiche Kreise, innen kräftiger
+    // Glow: two soft circles, stronger inside
     private static void DrawHalo(DrawingContext dc, Point c, double hw, double halo, Color color)
     {
         foreach (var (radius, alpha) in new[] { (hw * 2.6, 0.18), (hw * 4.2, 0.07) })
@@ -158,10 +158,10 @@ internal static class AvatarArt
                     dc.DrawGeometry(null, pen, Curve(e, -0.19 * hh, 0.07 * hh, 0, -0.24 * hh, 0.19 * hh, 0.07 * hh));
                     break;
                 case Mood.Content:
-                case Mood.Sleep:                                               // ∪, zufrieden oder schlafend
+                case Mood.Sleep:                                               // ∪, content or asleep
                     dc.DrawGeometry(null, pen, Curve(e, -0.19 * hh, -0.04 * hh, 0, 0.17 * hh, 0.19 * hh, -0.04 * hh));
                     break;
-                case Mood.Squint:                                              // schmal, innen tiefer
+                case Mood.Squint:                                              // narrow, deeper inside
                     dc.DrawLine(pen, new Point(e.X - s * 0.17 * hh, e.Y - 0.04 * hh), new Point(e.X + s * 0.13 * hh, e.Y + 0.05 * hh));
                     break;
                 case Mood.Strain:                                              // > <
@@ -180,7 +180,7 @@ internal static class AvatarArt
                 case Mood.Love:
                     dc.DrawGeometry(HeartBrush, null, Heart(e, hh * 0.2 * p.EyeScale));
                     break;
-                default:                                                       // offen, mit Glanzpunkt
+                default:                                                       // open, with highlight
                     double rx = hh * 0.14 * p.EyeScale, ry = hh * 0.22 * p.EyeScale * (face == Mood.Focus ? 0.75 : 1) * Math.Max(0.06, p.Open);
                     dc.DrawEllipse(Ink, null, e, rx, ry);
                     if (p.Open > 0.5) dc.DrawEllipse(Shine, null, new Point(e.X - rx * 0.32, e.Y - ry * 0.42), rx * 0.34, ry * 0.26);
@@ -188,7 +188,7 @@ internal static class AvatarArt
             }
         }
 
-        if (face == Mood.Focus)                                                // entschlossen, nicht böse
+        if (face == Mood.Focus)                                                // determined, not angry
             foreach (int s in new[] { -1, 1 })
                 dc.DrawLine(new Pen(Ink, stroke * 0.8) { StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round },
                     new Point(s * hh * 0.17 + lx, -hh * 0.36 + ly), new Point(s * hh * 0.5 + lx, -hh * 0.36 + ly));
@@ -204,7 +204,7 @@ internal static class AvatarArt
 
     private static void DrawBadge(DrawingContext dc, AvatarPose p, double hw, double hh)
     {
-        double r = hh * (p.BadgeKind == BadgeKind.Settings ? 0.4 : 0.3) * p.Badge;   // Zahnrad etwas größer, sonst nicht erkennbar
+        double r = hh * (p.BadgeKind == BadgeKind.Settings ? 0.4 : 0.3) * p.Badge;   // gear slightly larger, otherwise unreadable
         var o = new Point(-hw * 0.78, -hh * 0.74);
         dc.DrawEllipse(Ring, null, o, r + hh * 0.08 * p.Badge, r + hh * 0.08 * p.Badge);
         var white = new Pen(Brushes.White, r * 0.26) { StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round, LineJoin = PenLineJoin.Round };
@@ -219,12 +219,12 @@ internal static class AvatarArt
                 dc.DrawLine(white, new Point(o.X, o.Y - r * 0.45), new Point(o.X, o.Y + r * 0.08));
                 dc.DrawEllipse(Brushes.White, null, new Point(o.X, o.Y + r * 0.42), r * 0.13, r * 0.13);
                 break;
-            case BadgeKind.Settings:                                       // Zahnrad
+            case BadgeKind.Settings:                                       // gear
                 dc.DrawEllipse(GearBrush, null, o, r, r);
                 dc.DrawGeometry(Brushes.White, null, Gear(o, r * 0.62, r * 0.46, 8));
                 dc.DrawEllipse(GearBrush, null, o, r * 0.2, r * 0.2);
                 break;
-            default:                                                       // grüner Haken
+            default:                                                       // green check
                 dc.DrawEllipse(DoneBrush, null, o, r, r);
                 var g = new StreamGeometry();
                 using (var c = g.Open())
@@ -238,7 +238,7 @@ internal static class AvatarArt
         }
     }
 
-    // Herzchen steigen auf und vergehen (1,8 s)
+    // Hearts rise and fade (1.8 s).
     private static void DrawHearts(DrawingContext dc, double t, Point c, double hw, double hh)
     {
         for (int i = 0; i < 3; i++)
@@ -253,7 +253,7 @@ internal static class AvatarArt
         }
     }
 
-    // Zahnrad mit „teeth“ Zähnen: außen Zahnköpfe, innen der Kranz
+    // Gear with "teeth" teeth: tooth tips outside, ring inside.
     private static StreamGeometry Gear(Point o, double outer, double inner, int teeth)
     {
         var g = new StreamGeometry();
@@ -283,7 +283,7 @@ internal static class AvatarArt
         return g;
     }
 
-    // Spirale aus Halbkreisen mit wachsendem Radius, rechts gespiegelt
+    // Spiral of half circles with growing radius, mirrored on the right.
     private static StreamGeometry Spiral(Point o, double hh, int side)
     {
         var g = new StreamGeometry();

@@ -1,5 +1,4 @@
-using Domestique.Core.Protocol;
-using Xunit;
+﻿using Domestique.Core.Protocol;
 
 namespace Domestique.Tests;
 
@@ -18,7 +17,7 @@ public class IndoorBikeDataTest
     }
 
     [Fact]
-    public void Ignores_appended_vendor_bytes()                  // echtes Paket vom Van Rysel D100
+    public void Ignores_appended_vendor_bytes()                  // real packet from a Van Rysel D100
     {
         var d = IndoorBikeDataParser.Parse(Convert.FromHexString("40008C020900E101000000001C00E803"));
         Assert.NotNull(d);
@@ -119,7 +118,7 @@ public class IndoorBikeDataTest
         Assert.Equal(140, data.HeartRateBpm);
     }
 
-    // Resistance Level ist wie bei Zwift & Co. immer sint16; kürzer heißt: Paket zu kurz
+    // resistance level is always sint16 as in Zwift and others; shorter means the packet is too short
     [Theory]
     [InlineData(0)]
     [InlineData(1)]
@@ -159,22 +158,22 @@ public class IndoorBikeDataTest
         Assert.Equal(200, data.PowerW);
     }
 
-    // Alle Felder gesetzt (außer More Data); Füllbytes sind unterschiedlich, damit Offset-Fehler auffallen
+    // All fields set (except More Data); padding bytes differ so offset errors show up
     private static byte[] AllFieldsPacket(int resistanceBytes) =>
     [
-        0xFE, 0x1F,                                     // Flags
-        0x94, 0x0B,                                     // Speed 29.64 km/h
-        0x11, 0x11,                                     // Average Speed
-        0xB4, 0x00,                                     // Cadence 90 rpm
-        0x22, 0x22,                                     // Average Cadence
-        0x33, 0x33, 0x33,                               // Total Distance
-        .. Enumerable.Repeat((byte)0x44, resistanceBytes), // Resistance Level
-        0xC8, 0x00,                                     // Power 200 W
-        0x55, 0x55,                                     // Average Power
-        0x66, 0x66, 0x66, 0x66, 0x66,                   // Energie
-        0x8C,                                           // Heart Rate 140 bpm
+        0xFE, 0x1F,                                     // flags
+        0x94, 0x0B,                                     // speed 29.64 km/h
+        0x11, 0x11,                                     // average speed
+        0xB4, 0x00,                                     // cadence 90 rpm
+        0x22, 0x22,                                     // average cadence
+        0x33, 0x33, 0x33,                               // total distance
+        .. Enumerable.Repeat((byte)0x44, resistanceBytes), // resistance level
+        0xC8, 0x00,                                     // power 200 W
+        0x55, 0x55,                                     // average power
+        0x66, 0x66, 0x66, 0x66, 0x66,                   // energy
+        0x8C,                                           // heart rate 140 bpm
         0x77,                                           // MET
-        0x88, 0x88,                                     // Elapsed Time
-        0x99, 0x99,                                     // Remaining Time
+        0x88, 0x88,                                     // elapsed time
+        0x99, 0x99,                                     // remaining time
     ];
 }

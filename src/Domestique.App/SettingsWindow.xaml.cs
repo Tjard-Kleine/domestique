@@ -15,11 +15,11 @@ namespace Domestique.App;
 public sealed record DeviceItem(ulong Address, string Name, string Detail);
 public sealed record LibraryItem(string FilePath, string Label);
 
-// Jede Änderung wirkt sofort. Ungültige Eingaben werden rot markiert und nicht übernommen.
-// Gespeichert wird kurz nach der letzten Änderung, damit ein gezogener Regler nicht bei jedem Pixel schreibt.
+// Settings popover. Every change applies immediately; invalid input is marked red and not applied.
+// Saving happens shortly after the last change so a dragged slider doesn't write on every pixel.
 public partial class SettingsWindow : Window
 {
-    public const double PadX = 14, PadY = 36;                                // durchsichtiger Rand ums Panel (Popover.Margin)
+    public const double PadX = 14, PadY = 36;                                // transparent margin around the panel (Popover.Margin)
     private readonly MainWindow _main;
     private readonly AppSettings _s;
     private readonly LibraryStore _library;
@@ -34,15 +34,10 @@ public partial class SettingsWindow : Window
         _main = main;
         _s = settings;
         _library = library;
-        if (main.IsVisible) Owner = main;                                     // bleibt über dem Overlay und schließt mit ihm
+        if (main.IsVisible) Owner = main;                                     // stays above the overlay and closes with it
         _save.Tick += (_, _) => { _save.Stop(); _s.Save(); };
         _status.Tick += (_, _) => RefreshStatus();
-        // Streifen der Vintage-Vorschau an den runden Ecken abschneiden
-        VintagePreview.SizeChanged += (_, e) => VintagePreview.Clip = new RectangleGeometry(new Rect(e.NewSize), 9, 9);
 
-        StandardTile.IsChecked = _s.Theme == "Standard";
-        TourTile.IsChecked = _s.Theme == "Tour";
-        VintageTile.IsChecked = _s.Theme == "Vintage";
         OpacitySlider.Value = _s.BackgroundOpacity * 100;
         ScaleSlider.Value = _s.Scale;
         NotchBox.IsChecked = _s.NotchDock;
@@ -59,22 +54,21 @@ public partial class SettingsWindow : Window
         RefreshLibrary();
         RefreshMyDevices();
         HeaderAvatar.Mood = Mood.Idle;
-        HeaderAvatar.Gear = true;                                             // graues Abzeichen mit Zahnrad
-        MouseMove += (_, e) => HeaderAvatar.LookAt(e.GetPosition(HeaderAvatar));   // Augen folgen der Maus
+        HeaderAvatar.Gear = true;                                             // gray gear badge
+        MouseMove += (_, e) => HeaderAvatar.LookAt(e.GetPosition(HeaderAvatar));   // eyes follow the mouse
         MouseLeave += (_, _) => HeaderAvatar.LookAhead();
         _loading = false;
-        Popover.Opacity = 0;                                                  // unsichtbar bis zum ersten Bild, dann aufspringen
+        Popover.Opacity = 0;                                                  // invisible until the first frame, then it pops open
         ContentRendered += (_, _) => PlayOpen();
         Closed += (_, _) =>
         {
             _status.Stop();
-            if (_recording is not null) _main.ApplyHotkeys();                 // mitten im Aufnehmen geschlossen: Kürzel wieder an
+            if (_recording is not null) _main.ApplyHotkeys();                 // closed while recording a shortcut: turn the shortcuts back on
             if (_save.IsEnabled) { _save.Stop(); _s.Save(); }
         };
     }
 
-    // Öffnen wie ein Popover aus dem Zahnrad: wächst etwas über seine Größe hinaus und schnappt zurück,
-    // die Karten erscheinen nacheinander, der Avatar im Kopf begrüßt
+    // Opens like a popover from the gear: slight overshoot, cards appear one after another, the avatar greets.
     private void PlayOpen()
     {
         MovePill(animate: false);
@@ -90,19 +84,19 @@ public partial class SettingsWindow : Window
         _save.Start();
     }
 
-    // ---------- Reiter ----------
+    // == Tabs ==
 
     private void Tab_Checked(object sender, RoutedEventArgs e)
     {
-        if (LookPage is null) return;                                         // während InitializeComponent
+        if (LookPage is null) return;                                         // during InitializeComponent
         LookPage.Visibility = Show(LookTab.IsChecked == true);
         RiderPage.Visibility = Show(RiderTab.IsChecked == true);
         BluetoothPage.Visibility = Show(BluetoothTab.IsChecked == true);
         LibraryPage.Visibility = Show(LibraryTab.IsChecked == true);
         KeysPage.Visibility = Show(KeysTab.IsChecked == true);
         if (BluetoothTab.IsChecked == true) { RefreshStatus(); _status.Start(); } else _status.Stop();
-        if (KeysTab.IsChecked == true) RefreshHotkeys();                      // z. B. inzwischen von einer anderen App belegt
-        if (!IsLoaded) return;                                                // Öffnen zeigt die Seite ohnehin an
+        if (KeysTab.IsChecked == true) RefreshHotkeys();                      // e.g. taken by another app meanwhile
+        if (!IsLoaded) return;                                                // opening shows the page anyway
         Motion.Reveal(PageItems(CurrentPage), 30, 30, rise: true);
         MovePill(animate: true);
     }
@@ -111,7 +105,7 @@ public partial class SettingsWindow : Window
         RiderTab.IsChecked == true ? RiderPage : BluetoothTab.IsChecked == true ? BluetoothPage : LibraryTab.IsChecked == true ? LibraryPage
         : KeysTab.IsChecked == true ? KeysPage : LookPage;
 
-    // Karten einer Seite in der Reihenfolge, in der sie erscheinen
+    // Cards of a page in the order they appear.
     private static IEnumerable<UIElement> PageItems(FrameworkElement page) => page switch
     {
         ScrollViewer { Content: Panel panel } => panel.Children.Cast<UIElement>(),
@@ -119,7 +113,7 @@ public partial class SettingsWindow : Window
         _ => [page],
     };
 
-    // gleitet unter den gewählten Reiter und streckt sich unterwegs
+    // Glides under the chosen tab and stretches on the way.
     private void MovePill(bool animate)
     {
         var tabs = new[] { LookTab, RiderTab, BluetoothTab, LibraryTab, KeysTab };
@@ -134,15 +128,7 @@ public partial class SettingsWindow : Window
 
     private static Visibility Show(bool visible) => visible ? Visibility.Visible : Visibility.Collapsed;
 
-    // ---------- Darstellung ----------
-
-    private void Theme_Checked(object sender, RoutedEventArgs e)
-    {
-        if (_loading || sender is not RadioButton { Tag: string theme }) return;
-        _s.Theme = theme;
-        _main.ApplySettings();
-        ScheduleSave();
-    }
+    // == Appearance ==
 
     private void Look_Changed(object sender, RoutedEventArgs e)
     {
@@ -158,7 +144,7 @@ public partial class SettingsWindow : Window
 
     private void ResetPosition_Click(object sender, RoutedEventArgs e) => _main.ResetPosition();
 
-    // Werte der kleinen Notch in fester Reihenfolge; die Notch passt ihre Breite an
+    // Small notch values in a fixed order; the notch adapts its width.
     private void CompactChip_Click(object sender, RoutedEventArgs e)
     {
         _s.CompactValues = CompactChips.Children.OfType<CheckBox>().Where(c => c.IsChecked == true).Select(c => (string)c.Tag).ToList();
@@ -166,12 +152,12 @@ public partial class SettingsWindow : Window
         ScheduleSave();
     }
 
-    // ---------- Tastenkürzel ----------
+    // == Shortcuts ==
 
     private readonly List<HotkeyItem> _hotkeys = Hotkeys.All.Select(h => new HotkeyItem(h.Action, h.Label)).ToList();
     private HotkeyItem? _recording;
 
-    // Kürzel und Hinweise: von einer anderen App belegt, blockiert ein Zeichen der Tastatur, oder keins gesetzt
+    // Shortcuts and notes: taken by another app, blocks a keyboard character, or none set.
     private void RefreshHotkeys()
     {
         foreach (var item in _hotkeys)
@@ -192,7 +178,7 @@ public partial class SettingsWindow : Window
         if (button.DataContext is not HotkeyItem item || item == _recording) return;
         if (_recording is not null) StopRecording();
         _recording = item;
-        _main.SuspendHotkeys();                                               // sonst löst das alte Kürzel die Aktion aus
+        _main.SuspendHotkeys();                                               // otherwise the old shortcut would trigger the action
         item.Recording = true;
         item.Keys = "Press keys …";
         item.SetNote("Esc cancels · Delete removes", warn: false);
@@ -202,12 +188,12 @@ public partial class SettingsWindow : Window
     private void HotkeyButton_PreviewKeyDown(object sender, KeyEventArgs e)
     {
         if (_recording is not { } item || ((FrameworkElement)sender).DataContext != item) return;
-        e.Handled = true;                                                     // keine Taste löst den Knopf oder das Fenster aus
+        e.Handled = true;                                                     // no key triggers the button or the window
         var key = e.Key == Key.System ? e.SystemKey : e.Key == Key.ImeProcessed ? e.ImeProcessedKey : e.Key;
         var mods = Keyboard.Modifiers;
         if (key is Key.LeftCtrl or Key.RightCtrl or Key.LeftAlt or Key.RightAlt or Key.LeftShift or Key.RightShift or Key.LWin or Key.RWin)
         {
-            item.Keys = mods == ModifierKeys.None ? "Press keys …" : KeyCombo.ModifierText(mods) + "+ …";   // zeigt, was schon gedrückt ist
+            item.Keys = mods == ModifierKeys.None ? "Press keys …" : KeyCombo.ModifierText(mods) + "+ …";   // shows what is already pressed
             return;
         }
         if (mods == ModifierKeys.None && key == Key.Escape) { StopRecording(); return; }
@@ -218,7 +204,7 @@ public partial class SettingsWindow : Window
             StopRecording();
             return;
         }
-        // nur mit Strg, Alt oder Win: Einzelne Tasten würden in allen Apps fehlen
+        // only with Ctrl, Alt or Win: single keys would be missing in every app
         if ((mods & (ModifierKeys.Control | ModifierKeys.Alt | ModifierKeys.Windows)) == 0)
         {
             item.SetNote("Use it with Ctrl, Alt or Win.", warn: true);
@@ -231,7 +217,7 @@ public partial class SettingsWindow : Window
         StopRecording();
     }
 
-    // Leertaste und Enter lösen einen Knopf beim Loslassen aus: während des Aufnehmens nicht
+    // Space and Enter click a button on key up: not while recording.
     private void HotkeyButton_PreviewKeyUp(object sender, KeyEventArgs e)
     {
         if (_recording is not null) e.Handled = true;
@@ -242,7 +228,7 @@ public partial class SettingsWindow : Window
         if (_recording is not null && ((FrameworkElement)sender).DataContext == _recording) StopRecording();
     }
 
-    // Aufnehmen beenden: Kürzel wieder anmelden, Liste mit Hinweisen auffrischen
+    // Stops recording: registers the shortcuts again and refreshes the notes.
     private void StopRecording()
     {
         if (_recording is null) return;
@@ -269,7 +255,7 @@ public partial class SettingsWindow : Window
         DifficultyValue.Text = $"{DifficultySlider.Value:0} %";
     }
 
-    // ---------- Fahrer ----------
+    // == Rider ==
 
     private void Rider_Changed(object sender, RoutedEventArgs e)
     {
@@ -290,18 +276,18 @@ public partial class SettingsWindow : Window
 
     private static bool Check(TextBox box, double min, double max, out double value)
     {
-        // Komma und Punkt als Dezimaltrenner, egal wie Windows eingestellt ist
+        // comma and dot as decimal separator, whatever the Windows locale
         bool ok = double.TryParse(box.Text.Trim().Replace(',', '.'), NumberStyles.Float, CultureInfo.InvariantCulture, out value)
                   && value >= min && value <= max;
         box.Tag = ok ? null : "invalid";
         return ok;
     }
 
-    // ---------- Bluetooth ----------
+    // == Bluetooth ==
 
     public void ShowBluetooth() => BluetoothTab.IsChecked = true;
 
-    // Einmal pro Sekunde, solange der Reiter offen ist: Hinweis „Bluetooth ist aus“ und Verbunden/Nicht verbunden
+    // Once per second while the tab is open: "Bluetooth is off" notice and connected / not connected.
     private void RefreshStatus()
     {
         BluetoothOffNotice.Visibility = Show(_main.BluetoothOff);
@@ -366,7 +352,7 @@ public partial class SettingsWindow : Window
         if ((sender as FrameworkElement)?.DataContext is DeviceItem device) await UseAsync(device.Address, device.Name, "Pulsgurt");
     }
 
-    // Gerät speichern (erscheint unter „Meine Geräte“) und als Trainer bzw. Pulsgurt verbinden
+    // Saves the device (listed under "My devices") and connects it as trainer or heart rate strap.
     private async Task UseAsync(ulong address, string name, string kind)
     {
         bool trainer = kind == "Trainer";
@@ -380,7 +366,7 @@ public partial class SettingsWindow : Window
         RefreshStatus();
     }
 
-    // ---------- Bibliothek ----------
+    // == Library ==
 
     private void RefreshLibrary()
     {
@@ -415,7 +401,7 @@ public partial class SettingsWindow : Window
         RefreshLibrary();
     }
 
-    // ---------- Avatar im Kopf: dieselben Reaktionen wie im Overlay ----------
+    // == Header avatar: same reactions as in the overlay ==
 
     private readonly List<long> _slaps = new();
 
@@ -425,7 +411,7 @@ public partial class SettingsWindow : Window
 
     private void Avatar_Slap(object sender, MouseButtonEventArgs e)
     {
-        e.Handled = true;                                                     // sonst startet das Verschieben
+        e.Handled = true;                                                     // otherwise dragging starts
         long now = Environment.TickCount64;
         _slaps.RemoveAll(t => now - t > 1700);
         _slaps.Add(now);
@@ -435,11 +421,11 @@ public partial class SettingsWindow : Window
         HeaderAvatar.Dizzy();
     }
 
-    // ---------- Fenster ----------
+    // == Window ==
 
     private void Header_MouseLeftButtonDown(object sender, MouseButtonEventArgs e) => DragMove();
 
-    // schrumpft zurück zum Zahnrad, dann zu
+    // shrinks back towards the gear, then closes
     private void Close_Click(object sender, RoutedEventArgs e)
     {
         if (_closingAnimated) return;
@@ -448,7 +434,7 @@ public partial class SettingsWindow : Window
     }
 }
 
-// Zeile unter „Shortcuts“: Aktion, Kürzel und ein Hinweis darunter (Warnung in Gelb)
+// Row on the shortcuts page: action, shortcut and a note below (warnings in yellow).
 public sealed class HotkeyItem(HotkeyAction action, string label) : INotifyPropertyChanged
 {
     private string _keys = "", _note = "";
@@ -486,14 +472,14 @@ public sealed class HotkeyItem(HotkeyAction action, string label) : INotifyPrope
     private void Changed(string name) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
 }
 
-// Eintrag unter „Meine Geräte“. IsConnected meldet Änderungen, damit die Liste nicht neu aufgebaut werden muss.
+// Entry under "My devices". IsConnected raises change notifications so the list isn't rebuilt.
 public sealed class MyDeviceItem(SavedDevice device) : INotifyPropertyChanged
 {
     private bool _connected;
     public SavedDevice Device { get; } = device;
     public string Name => Device.Name;
     public string Kind => Device.Kind;
-    public string KindLabel => Device.Kind == "Trainer" ? "Trainer" : "HR strap";   // Kind bleibt als Schlüssel in settings.json
+    public string KindLabel => Device.Kind == "Trainer" ? "Trainer" : "HR strap";   // Kind stays the key in settings.json
     public string Icon => Device.Kind == "Trainer" ? "" : "";
     public event PropertyChangedEventHandler? PropertyChanged;
 

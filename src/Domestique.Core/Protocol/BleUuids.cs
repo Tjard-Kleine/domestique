@@ -1,4 +1,6 @@
 namespace Domestique.Core.Protocol;
+
+// Bluetooth SIG UUIDs for FTMS and heart rate.
 public static class BleUuids
 {
     public static Guid FromShort(ushort id) => Guid.Parse($"0000{id:X4}-0000-1000-8000-00805F9B34FB");

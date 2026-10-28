@@ -9,6 +9,7 @@ using Windows.Devices.Bluetooth.GenericAttributeProfile;
 
 namespace Domestique.Ble;
 
+// FTMS smart trainer: reads Indoor Bike Data and, if available, controls it through the Control Point.
 public sealed class BleTrainer(SessionState state) : IAsyncDisposable
 {
     private readonly PowerAverager _avg = new(TimeSpan.FromSeconds(3));
@@ -18,7 +19,7 @@ public sealed class BleTrainer(SessionState state) : IAsyncDisposable
     private GattCharacteristic? _bikeData;
     private GattCharacteristic? _controlPoint;
     private GattCharacteristic? _status;
-    public ControlPoint? Control { get; private set; }               // null: Trainer nur lesbar
+    public ControlPoint? Control { get; private set; }               // null: trainer is read-only
     public string Name => string.IsNullOrWhiteSpace(_device?.Name) ? "Trainer" : _device.Name;
     public (int Min, int Max)? PowerRange { get; private set; }
     private bool _wasDisconnected;
@@ -30,7 +31,7 @@ public sealed class BleTrainer(SessionState state) : IAsyncDisposable
         _device.ConnectionStatusChanged += OnConnectionStatusChanged;
 
         _session = await GattSession.FromDeviceIdAsync(_device.BluetoothDeviceId);
-        _session.MaintainConnection = true;                         // Windows hält die Verbindung
+        _session.MaintainConnection = true;                         // Windows keeps the connection alive
 
         var services = await _device.GetGattServicesForUuidAsync(BleUuids.FitnessMachineService, BluetoothCacheMode.Uncached);
         if (services.Status != GattCommunicationStatus.Success || services.Services.Count == 0)
@@ -50,7 +51,7 @@ public sealed class BleTrainer(SessionState state) : IAsyncDisposable
         RawLog.Note($"Trainer connected ({_device.Name}), ERG range {PowerRange?.ToString() ?? "unknown"}");
     }
 
-    // Steuerung ist optional: ohne Control Point bleibt der Trainer lesbar.
+    // Control is optional: without a Control Point the trainer stays readable.
     private async Task ConnectControlAsync()
     {
         PowerRange = await ReadPowerRangeAsync();
@@ -67,10 +68,10 @@ public sealed class BleTrainer(SessionState state) : IAsyncDisposable
         if (_controlPoint is null) { RawLog.Note("No Control Point, trainer is read-only"); return; }
         _controlPoint.ValueChanged += OnControlPoint;
         var s = await _controlPoint.WriteClientCharacteristicConfigurationDescriptorAsync(
-            GattClientCharacteristicConfigurationDescriptorValue.Indicate);    // 1. erst abonnieren
+            GattClientCharacteristicConfigurationDescriptorValue.Indicate);    // subscribe first,
         if (s != GattCommunicationStatus.Success) { RawLog.Note($"Control Point can't be subscribed ({s})"); return; }
         Control = new ControlPoint(WriteControlAsync);
-        await Control.TakeControlAsync();                                     // 2. dann Kontrolle holen und starten
+        await Control.TakeControlAsync();                                     // then request control and start
     }
 
     private async Task<GattCharacteristic?> GetCharacteristicAsync(Guid uuid)
@@ -79,7 +80,7 @@ public sealed class BleTrainer(SessionState state) : IAsyncDisposable
         return r.Status == GattCommunicationStatus.Success && r.Characteristics.Count > 0 ? r.Characteristics[0] : null;
     }
 
-    // Supported Power Range (0x2AD8): Minimum und Maximum für ERG, je sint16
+    // Supported Power Range (0x2AD8): ERG minimum and maximum, sint16 each.
     private async Task<(int Min, int Max)?> ReadPowerRangeAsync()
     {
         if (await GetCharacteristicAsync(BleUuids.SupportedPowerRange) is not { } c) return null;
@@ -114,7 +115,6 @@ public sealed class BleTrainer(SessionState state) : IAsyncDisposable
             Power3sW = avg ?? s.Power3sW,
             CadenceRpm = d.CadenceRpm ?? s.CadenceRpm,
             HeartRateBpm = s.StrapConnected ? s.HeartRateBpm : d.HeartRateBpm ?? s.HeartRateBpm,
-            TrainerSpeedKmh = d.SpeedKmh ?? s.TrainerSpeedKmh,
             LastPacketTimestamp = now,
         });
     }
@@ -122,7 +122,7 @@ public sealed class BleTrainer(SessionState state) : IAsyncDisposable
     private void OnControlPoint(GattCharacteristic sender, GattValueChangedEventArgs args)
     {
         var bytes = args.CharacteristicValue.ToBytes();
-        RawLog.Write("2AD9", bytes);                                // 800501 = Set Target Power erfolgreich
+        RawLog.Write("2AD9", bytes);                                // 800501 = Set Target Power succeeded
         Control?.OnIndication(bytes);
     }
 
@@ -130,7 +130,7 @@ public sealed class BleTrainer(SessionState state) : IAsyncDisposable
     {
         var bytes = args.CharacteristicValue.ToBytes();
         RawLog.Write("2ADA", bytes);
-        if (Control is not null) _ = Control.OnMachineStatus(bytes);  // FF = Kontrolle verloren
+        if (Control is not null) _ = Control.OnMachineStatus(bytes);  // FF = control lost
     }
 
     private void OnConnectionStatusChanged(BluetoothLEDevice sender, object args)
@@ -150,7 +150,7 @@ public sealed class BleTrainer(SessionState state) : IAsyncDisposable
         }
     }
 
-    // Review #4: Windows verbindet selbst neu (MaintainConnection), aber Abos und Kontrolle sind weg.
+    // Windows reconnects by itself (MaintainConnection), but subscriptions and control are gone.
     private async Task ResubscribeAsync()
     {
         RawLog.Note("Trainer back, resubscribing");
@@ -162,7 +162,7 @@ public sealed class BleTrainer(SessionState state) : IAsyncDisposable
                     && await SubscribeAsync(_status, GattClientCharacteristicConfigurationDescriptorValue.Notify)
                     && await SubscribeAsync(_controlPoint, GattClientCharacteristicConfigurationDescriptorValue.Indicate))
                 {
-                    if (Control is not null) await Control.TakeControlAsync();     // Kontrolle, Start, letzter Zielwert
+                    if (Control is not null) await Control.TakeControlAsync();     // control, start, last target
                     return;
                 }
             }
@@ -185,6 +185,6 @@ public sealed class BleTrainer(SessionState state) : IAsyncDisposable
         _ftms?.Dispose();
         _session?.Dispose();
         _device?.Dispose();
-        state.Update(s => s with { Connected = false });            // Statusereignis ist schon abgemeldet
+        state.Update(s => s with { Connected = false });            // the status event is already unsubscribed
     }
 }

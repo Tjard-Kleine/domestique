@@ -1,30 +1,30 @@
-﻿// Ablauf, Zeiten, Kurven und Partikel portiert aus Coucou (https://github.com/Louis-CFM/coucou),
-// windows/src/mochi/greeting.ts. Copyright (c) 2026 Louis Raillé, MIT-Lizenz (siehe THIRD-PARTY-NOTICES.md).
-// Gezeichnet wird unser eigener Avatar (AvatarArt), nicht Coucous Figur.
+﻿// Sequence, timing, curves and particles ported from Coucou (https://github.com/Louis-CFM/coucou),
+// windows/src/mochi/greeting.ts. Copyright (c) 2026 Louis Raillé, MIT License (see THIRD-PARTY-NOTICES.md).
+// It draws Domestique's own avatar (AvatarArt), not Coucou's character.
 using System.Windows;
 using System.Windows.Media;
 using static Domestique.App.Co;
 
 namespace Domestique.App;
 
-// Der Start: Aus der kleinen Pille fällt der Avatar ins aufgehende Overlay, Lichtstreifen und ein Funkenring,
-// er landet, federt, freut sich, rutscht zur Seite und winkt, kommt zurück, blinzelt, das Abzeichen erscheint und
-// Blau steigt in ihm auf. Danach gleitet er auf seinen Platz: in die Übersicht oder, wenn Bluetooth aus ist,
-// nach links in die Bluetooth-Karte. Läuft nur beim Start, Bild für Bild, danach ist die Ansicht weg.
+// Launch animation: the avatar drops from the small pill into the opening overlay (light streaks, spark ring), lands,
+// bounces, waves, blinks, gets its badge and turns blue. Then it glides to its place in the overview, or into the
+// Bluetooth card when Bluetooth is off. Also flies the avatar between two places (Fly). Renders only while running.
 internal sealed class GreetingView : FrameworkElement
 {
-    // Zeitplan in Sekunden (Coucou: T)
+    // Timeline in seconds (Coucou: T)
     private const double Pop0 = 1.3, Pop1 = 1.45, Content0 = 2.4, Tuck0 = 2.45, Tuck1 = 2.7, BadgeAt = 2.72,
         Down0 = 2.85, Down1 = 3.45, Blink2 = 3.7, Tint0 = 3.85, Tint1 = 4.15, End = 4.6, LandMs = 560;
-    private const double Hb = 58;                                          // Körperhöhe beim Start
-    private const double SmallK = 0.29;                                    // Größe in der Pille, relativ zu Hb
+    private const double NarrowAt = End - 0.45;                            // the wide intro notch narrows to the HUD here
+    private const double Hb = 58;                                          // body height at the start
+    private const double SmallK = 0.29;                                    // size inside the pill, relative to Hb
 
     private static readonly (double X, double Speed, double Len, double Thick, double Alpha, double T0)[] Warps;
     private static readonly (double A, double J, double S, double Al)[] RingDots;
 
     static GreetingView()
     {
-        // gleiche Folge wie Coucou: lineare Kongruenz mit Startwert 7
+        // Same sequence as Coucou: linear congruential generator, seed 7
         uint seed = 7;
         double Rnd() { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / (double)0x7fffffff; }
         Warps = Enumerable.Range(0, 70).Select(_ => (Rnd(), 400 + Rnd() * 300, 6 + Rnd() * 16, 1 + Rnd() * 0.5, 0.25 + Rnd() * 0.55, Rnd() * 0.35)).ToArray();
@@ -34,14 +34,15 @@ internal sealed class GreetingView : FrameworkElement
     private readonly FrameLoop _loop;
     private Rect _card;
     private double _compactW, _compactH, _t, _landStart = double.NaN, _startMs, _landMs = LandMs;
-    private bool _greeting;
+    private bool _greeting, _narrowed;
     private Frame _frame, _landFrom;
     private (Point Center, double HalfHeight, AvatarPose Pose)? _target;
     private Action? _flightDone;
 
-    public Func<Avatar>? ChooseTarget;                                     // Wohin er am Ende gleitet
-    public Func<Rect>? IslandBounds;                                       // sichtbarer Teil der Insel, in eigenen Koordinaten
-    public event Action<Avatar>? Landing;                                  // Beginn des Gleitens: Inhalt einblenden
+    public Func<Avatar>? ChooseTarget;                                     // where the avatar lands
+    public Func<Rect>? IslandBounds;                                       // visible part of the island, in own coordinates
+    public event Action<Avatar>? Landing;                                  // landing starts: show the content
+    public event Action<bool>? Narrow;                                     // narrow the notch now; true = instantly (skipped)
     public event Action? Finished;
     public event Action<double>? HeaderOpacity;
 
@@ -53,7 +54,7 @@ internal sealed class GreetingView : FrameworkElement
         _loop = new FrameLoop(Tick);
     }
 
-    // Die Ansicht muss sichtbar und angeordnet sein, bevor man Punkte in ihr misst
+    // Must be visible and laid out before positions are measured in it.
     public void Prepare()
     {
         Visibility = Visibility.Visible;
@@ -69,6 +70,7 @@ internal sealed class GreetingView : FrameworkElement
         _landMs = LandMs;
         _target = null;
         _greeting = true;
+        _narrowed = false;
         _startMs = _loop.Now;
         Running = true;
         Visibility = Visibility.Visible;
@@ -77,14 +79,14 @@ internal sealed class GreetingView : FrameworkElement
         InvalidateVisual();
     }
 
-    // Klick während des Starts: gleich auf den Platz gleiten
+    // Click during the launch: glide to the place right away.
     public void Skip()
     {
         if (Running && _greeting && double.IsNaN(_landStart)) BeginLand(_loop.Now);
     }
 
-    // Avatar gleitet von einem Platz zum anderen (z. B. aus der Übersicht in die Bluetooth-Karte und zurück).
-    // Beide echten Avatare sind währenddessen unsichtbar; am Ende erscheint der Ziel-Avatar genau dort.
+    // Glides the avatar from one place to another (e.g. overview ↔ Bluetooth card).
+    // Both real avatars are hidden meanwhile; the target appears exactly where the flight ends.
     public void Fly(Avatar from, Avatar to, int ms = 560, Action? done = null)
     {
         if (Running) return;
@@ -112,6 +114,7 @@ internal sealed class GreetingView : FrameworkElement
         _t = (now - _startMs) / 1000;
         if (_greeting && double.IsNaN(_landStart))
         {
+            if (!_narrowed && _t >= NarrowAt) { _narrowed = true; Narrow?.Invoke(false); }
             if (_t >= End) BeginLand(now);
             else _frame = Pose(_t);
         }
@@ -121,10 +124,10 @@ internal sealed class GreetingView : FrameworkElement
             var (center, hh, pose) = _target!.Value;
             _frame = _landFrom;
             _frame.X = Lerp(_landFrom.X, center.X, k);
-            _frame.Y = Lerp(_landFrom.Y, center.Y, k) - Math.Sin(Math.PI * k) * hh * (_greeting ? 0 : 0.35);   // kleiner Bogen
+            _frame.Y = Lerp(_landFrom.Y, center.Y, k) - Math.Sin(Math.PI * k) * hh * (_greeting ? 0 : 0.35);   // small arc
             _frame.Hb = Lerp(_landFrom.Hb, hh * 2, k);
             _frame.Pose = AvatarPose.Lerp(_landFrom.Pose, pose, k);
-            if (!_greeting)                                                 // streckt sich in Flugrichtung
+            if (!_greeting)                                                 // stretches in flight direction
             {
                 _frame.Pose.Sx *= 1 + 0.1 * Math.Sin(Math.PI * k);
                 _frame.Pose.Sy *= 1 - 0.06 * Math.Sin(Math.PI * k);
@@ -147,18 +150,25 @@ internal sealed class GreetingView : FrameworkElement
 
     private void BeginLand(double now)
     {
+        if (_greeting && !_narrowed)                                        // skipped: narrow instantly, avatar stays centered
+        {
+            _narrowed = true;
+            Narrow?.Invoke(true);
+            UpdateLayout();
+            _frame = Pose(_t);
+        }
         _landFrom = _frame;
         _landFrom.Header = 1;
         _landStart = now;
         var avatar = ChooseTarget?.Invoke();
         if (avatar is null) { _target = (new Point(_frame.X, _frame.Y), _frame.Hb / 2, _frame.Pose.Clone()); return; }
-        Landing?.Invoke(avatar);                                            // Ziel sichtbar machen und Layout rechnen
+        Landing?.Invoke(avatar);                                            // makes the target visible and laid out
         avatar.UpdateLayout();
         var (c, hh) = avatar.Body;
         _target = (avatar.TranslatePoint(c, this), hh, avatar.CurrentPose().Clone());
     }
 
-    // ---------- Bild ----------
+    // == Rendering ==
 
     private struct Frame
     {
@@ -167,7 +177,7 @@ internal sealed class GreetingView : FrameworkElement
         public bool Particles;
     }
 
-    // Coucou greetPose: Fall, Landung, Federn, zur Seite rutschen, winken, Hände einziehen, zurück
+    // Coucou greetPose: drop, land, bounce, slide aside, wave, tuck hands, come back.
     private Frame Pose(double t)
     {
         double w = ActualWidth;
@@ -201,7 +211,7 @@ internal sealed class GreetingView : FrameworkElement
             : t < 2.7 ? Lerp(cy, sinkY, InOut(Seg(t, 2.4, 2.7)))
             : t < 2.85 ? sinkY
             : Lerp(sinkY, cy, InOut(Seg(t, 2.85, 3.45)));
-        if (t >= Pop1 && t < Tuck0)                                         // wippt im Takt der winkenden Hand
+        if (t >= Pop1 && t < Tuck0)                                         // bobs with the waving hand
         {
             double wt = t - Pop1;
             y += Math.Sin(wt * 2 * Math.PI * 5) * 0.02 * Hb * Clamp(wt / 0.08, 0, 1);
@@ -253,7 +263,7 @@ internal sealed class GreetingView : FrameworkElement
         if (!Running || _frame.Pose is null) return;
         var f = _frame;
         double radius = 16;
-        // Die Karte bleibt immer mit Abstand in der Insel, auch während die noch aufgeht
+        // The card always keeps a margin inside the island, also while it is still opening
         var card = _card;
         if (IslandBounds?.Invoke() is { } island)
             card.Intersect(new Rect(island.Left + 10, island.Top, Math.Max(0, island.Width - 20), Math.Max(0, island.Height - 10)));
@@ -272,7 +282,7 @@ internal sealed class GreetingView : FrameworkElement
         AvatarArt.Draw(dc, f.Pose, new Point(f.X, f.Y), f.Hb / 2, VisualTreeHelper.GetDpi(this).PixelsPerDip);
     }
 
-    // Lichtstreifen fallen beim Hereinfallen (0–0,55 s), ein Funkenring breitet sich ab 0,45 s aus
+    // Light streaks fall while the avatar drops in (0–0.55 s); a spark ring spreads from 0.45 s.
     private void DrawParticles(DrawingContext dc, double t, Frame f)
     {
         var brush = TryFindResource("TextBrush") as Brush ?? Brushes.White;

@@ -2,7 +2,6 @@
 using System.Text;
 using Domestique.Core.Physics;
 using Domestique.Core.Routes;
-using Xunit;
 
 namespace Domestique.Tests;
 
@@ -53,7 +52,7 @@ public class RouteTests
     [Fact]
     public void Smooths_gps_noise()
     {
-        // 10 m Ausreißer auf flacher Strecke: roh wären das 100 % Steigung
+        // 10 m outlier on a flat route: raw that would be a 100 % grade
         var route = GpxLoader.Load(Gpx("trk><trkseg", "trkpt", Line(1000, d => Math.Abs(d - 500) < 1 ? 110 : 100)), "Rauschen");
         double max = route.Points.Max(p => Math.Abs(p.GradePercent));
         Assert.InRange(max, 5, 10);
@@ -69,7 +68,7 @@ public class RouteTests
     [Fact]
     public void Simulation_follows_the_route_grade()
     {
-        // 500 m flach, dann 500 m mit 5 %
+        // 500 m flat, then 500 m at 5 %
         var route = GpxLoader.Load(Gpx("trk><trkseg", "trkpt", Line(1000, d => d <= 500 ? 100 : 100 + (d - 500) * 0.05)), "Anstieg");
         var sim = new RouteSim(new RiderPhysics());
         sim.Load(route);
@@ -95,11 +94,11 @@ public class RouteTests
     public void Route_loaded_mid_ride_starts_at_its_beginning()
     {
         var sim = new RouteSim(new RiderPhysics());
-        for (int i = 0; i < 400; i++) sim.Step(200, 0.25);                  // ohne Strecke: flach
+        for (int i = 0; i < 400; i++) sim.Step(200, 0.25);                  // without a route: flat
         double ridden = sim.DistanceM;
         sim.Load(GpxLoader.Load(Gpx("trk><trkseg", "trkpt", Line(1000, d => 100)), "Später"));
         Assert.Equal(0, sim.RouteDistanceM);
-        Assert.Equal(ridden, sim.DistanceM);                                 // Gesamtdistanz der Fahrt bleibt
+        Assert.Equal(ridden, sim.DistanceM);                                 // the total ride distance is kept
     }
 
     [Fact]
@@ -144,7 +143,7 @@ public class RouteTests
         while (!sim.Finished) sim.Step(300, 1);
         Assert.InRange(sim.ClimbedM, 940, 1000);                           // 600 → 1580 m
         double atTop = sim.ClimbedM;
-        for (int i = 0; i < 60; i++) sim.Step(300, 1);                      // nach dem Ziel flach weiter
+        for (int i = 0; i < 60; i++) sim.Step(300, 1);                      // flat after the finish
         Assert.Equal(atTop, sim.ClimbedM);
     }
 
@@ -152,7 +151,7 @@ public class RouteTests
     public void Flat_route_and_no_route_add_almost_no_climb()
     {
         var sim = new RouteSim(new RiderPhysics());
-        for (int i = 0; i < 600; i++) sim.Step(250, 1);                     // ohne Strecke
+        for (int i = 0; i < 600; i++) sim.Step(250, 1);                     // without a route
         Assert.Equal(0, sim.ClimbedM);
         sim.Load(BuiltInRoutes.Load("Time Trial Oval"));
         while (!sim.Finished) sim.Step(250, 1);
@@ -163,8 +162,8 @@ public class RouteTests
     public void Moving_time_counts_only_while_pedaling()
     {
         var sim = new RouteSim(new RiderPhysics());
-        for (int i = 0; i < 40; i++) sim.Step(200, 0.25);                   // 10 s treten
-        for (int i = 0; i < 40; i++) sim.Step(0, 0.25);                     // 10 s rollen oder stehen
+        for (int i = 0; i < 40; i++) sim.Step(200, 0.25);                   // pedal 10 s
+        for (int i = 0; i < 40; i++) sim.Step(0, 0.25);                     // coast or stand 10 s
         Assert.Equal(TimeSpan.FromSeconds(10), sim.MovingTime);
     }
 
@@ -178,7 +177,7 @@ public class RouteTests
         Assert.Equal(1.25, limiter.Next(-5, 1));
     }
 
-    // Punkte nach Norden im 10-m-Abstand, Höhe als Funktion der Distanz
+    // points heading north 10 m apart, elevation as a function of distance
     private static IEnumerable<(double Lat, double Lon, double Ele)> Line(double lengthM, Func<double, double> elevation)
     {
         for (double d = 0; d <= lengthM + 0.001; d += 10)

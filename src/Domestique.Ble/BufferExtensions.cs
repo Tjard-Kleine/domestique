@@ -1,7 +1,8 @@
-using Windows.Storage.Streams;
+﻿using Windows.Storage.Streams;
 
 namespace Domestique.Ble;
 
+// WinRT buffer to byte array.
 internal static class BufferExtensions
 {
     public static byte[] ToBytes(this IBuffer buffer)

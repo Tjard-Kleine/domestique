@@ -2,8 +2,7 @@
 
 namespace Domestique.Core.Library;
 
-// Strecken-Bibliothek unter %APPDATA%\Domestique\Routes. Jede Datei wird vor dem Kopieren geprüft,
-// damit nur lesbare Strecken darin landen.
+// Route library in %APPDATA%\Domestique\Routes. Files are validated before they are copied in.
 public sealed class LibraryStore
 {
     public string RoutesDir { get; }
@@ -20,7 +19,7 @@ public sealed class LibraryStore
     {
         if (!Path.GetExtension(sourcePath).Equals(".gpx", StringComparison.OrdinalIgnoreCase))
             throw new FormatException("Only .gpx routes are supported.");
-        GpxLoader.Load(File.ReadAllText(sourcePath), "Check");                 // wirft bei kaputter Datei
+        GpxLoader.Load(File.ReadAllText(sourcePath), "Check");                 // throws on a broken file
         string target = Path.Combine(RoutesDir, Path.GetFileName(sourcePath));
         if (!string.Equals(Path.GetFullPath(sourcePath), Path.GetFullPath(target), StringComparison.OrdinalIgnoreCase))
             File.Copy(sourcePath, target, overwrite: true);

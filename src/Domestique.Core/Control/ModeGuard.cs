@@ -4,6 +4,7 @@ namespace Domestique.Core.Control;
 
 public enum ControlMode { Free, Erg, Sim }
 
+// Keeps ERG and simulation apart: in ERG no grade is ever sent, and unchanged targets are not resent.
 public sealed class ModeGuard(Action<byte[]> sendTarget)
 {
     private double? _lastGrade;
@@ -16,12 +17,12 @@ public sealed class ModeGuard(Action<byte[]> sendTarget)
         watts = Math.Clamp(watts, PowerLimits.Min, PowerLimits.Max);
         Mode = ControlMode.Erg;
         _lastGrade = null;
-        if (TargetPowerW == watts) return;               // nichts Neues: nichts senden
+        if (TargetPowerW == watts) return;
         TargetPowerW = watts;
         sendTarget(FtmsCommands.SetTargetPower(watts));
     }
 
-    // Zurück in die Simulation, mit der Steigung, die gerade am Trainer anliegen soll (ohne Strecke flach).
+    // Back to simulation with the grade the trainer should have now (flat without a route).
     public void EndErg(double gradePercent = 0)
     {
         if (Mode != ControlMode.Erg) return;
@@ -32,14 +33,14 @@ public sealed class ModeGuard(Action<byte[]> sendTarget)
 
     public void SetGrade(double gradePercent)
     {
-        if (Mode == ControlMode.Erg) return;              // im ERG nie eine Steigung senden
+        if (Mode == ControlMode.Erg) return;
         Mode = ControlMode.Sim;
         if (_lastGrade is double last && Math.Abs(last - gradePercent) < 0.1) return;
         _lastGrade = gradePercent;
         sendTarget(FtmsCommands.SetSimulation(gradePercent));
     }
 
-    // Nach dem (Wieder-)Verbinden: aktuellen Zielwert erneut senden. Ohne Modus gilt flache Straße.
+    // After (re)connecting: resends the current target; without a mode the road is flat.
     public void Reapply()
     {
         if (Mode == ControlMode.Erg && TargetPowerW is int w) sendTarget(FtmsCommands.SetTargetPower(w));

@@ -5,7 +5,7 @@ using Windows.Devices.Bluetooth.GenericAttributeProfile;
 
 namespace Domestique.Ble;
 
-// Brustgurt über den Heart Rate Service. Gleiches Muster wie beim Trainer, inklusive Neu-Abo nach einem Abbruch.
+// Heart rate strap via the Heart Rate Service; resubscribes after a dropout like the trainer.
 public sealed class BleHeartRate(SessionState state) : IAsyncDisposable
 {
     private BluetoothLEDevice? _device;
@@ -56,7 +56,7 @@ public sealed class BleHeartRate(SessionState state) : IAsyncDisposable
         {
             _wasDisconnected = true;
             RawLog.Note("HR strap disconnected");
-            state.Update(s => s with { StrapConnected = false, HeartRateBpm = null });   // kein alter Puls in der Anzeige
+            state.Update(s => s with { StrapConnected = false, HeartRateBpm = null });   // no stale heart rate on screen
         }
         else if (_wasDisconnected)
         {

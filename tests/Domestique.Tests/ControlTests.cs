@@ -1,8 +1,7 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using System.Diagnostics;
 using Domestique.Core.Control;
 using Domestique.Core.Protocol;
-using Xunit;
 
 namespace Domestique.Tests;
 
@@ -26,7 +25,7 @@ public class ControlTests
         var sent = new List<byte[]>();
         var guard = new ModeGuard(sent.Add);
         guard.SetErg(200);
-        guard.SetGrade(5);                                // muss ignoriert werden
+        guard.SetGrade(5);                                // must be ignored
         Assert.Single(sent);
         Assert.Equal(0x05, sent[0][0]);
     }
@@ -37,7 +36,7 @@ public class ControlTests
         var sent = new List<byte[]>();
         var guard = new ModeGuard(sent.Add);
         guard.SetErg(200);
-        guard.EndErg(3.52);                               // z. B. aktuelle Steigung der Strecke
+        guard.EndErg(3.52);                               // e.g. the current route grade
         Assert.Equal(ControlMode.Sim, guard.Mode);
         Assert.Null(guard.TargetPowerW);
         Assert.Equal(FtmsCommands.SetSimulation(3.52), sent[^1]);
@@ -49,7 +48,7 @@ public class ControlTests
         var sent = new List<byte[]>();
         var guard = new ModeGuard(sent.Add);
         guard.SetErg(200);
-        guard.Reapply();                                  // z. B. nach dem Verbinden
+        guard.Reapply();                                  // e.g. after connecting
         Assert.Equal(2, sent.Count);
         Assert.Equal(sent[0], sent[1]);
     }
@@ -68,7 +67,7 @@ public class ControlTests
         var hold = new TaskCompletionSource();
         var (cp, written) = FakeTrainer(hold: hold.Task);
         cp.SetTarget(FtmsCommands.SetTargetPower(100));
-        await WaitUntil(() => written.Count == 1);        // 100 W ist unterwegs, der Trainer antwortet noch nicht
+        await WaitUntil(() => written.Count == 1);        // 100 W is in flight, the trainer has not answered yet
         cp.SetTarget(FtmsCommands.SetTargetPower(110));
         cp.SetTarget(FtmsCommands.SetTargetPower(120));
         hold.SetResult();
@@ -104,10 +103,10 @@ public class ControlTests
         var (cp, written) = FakeTrainer();
         cp.SetTarget(FtmsCommands.SetTargetPower(200));
         await WaitUntil(() => written.Count == 1);
-        await cp.OnMachineStatus([0xFF]);                 // z. B. Hersteller-App hat übernommen
+        await cp.OnMachineStatus([0xFF]);                 // e.g. the vendor app took over
         await WaitUntil(() => written.Count == 4);
         Assert.True(cp.HasControl);
-        await cp.OnMachineStatus([0xFF]);                 // gleich danach: nicht erneut (kein Ping-Pong)
+        await cp.OnMachineStatus([0xFF]);                 // right after: not again (no ping-pong)
         await Task.Delay(50);
         Assert.Equal(new byte[] { 0x05, 0x00, 0x07, 0x05 }, written.Select(c => c[0]));
         await cp.DisposeAsync();
@@ -117,15 +116,15 @@ public class ControlTests
     public async Task Other_status_messages_are_ignored()
     {
         var (cp, written) = FakeTrainer();
-        await cp.OnMachineStatus([0x01]);                 // Reset, schickt der D100 nach Request Control
-        await cp.OnMachineStatus([0x04]);                 // gestartet
-        await cp.OnMachineStatus([0x12, 0x00, 0x00, 0x00, 0x00, 0x28, 0x33]);   // Simulation geändert
+        await cp.OnMachineStatus([0x01]);                 // reset, sent by the D100 after Request Control
+        await cp.OnMachineStatus([0x04]);                 // started
+        await cp.OnMachineStatus([0x12, 0x00, 0x00, 0x00, 0x00, 0x28, 0x33]);   // simulation changed
         await Task.Delay(50);
         Assert.Empty(written);
         await cp.DisposeAsync();
     }
 
-    // Simulierter Control Point: schreibt mit und antwortet per Indication (Standard: Erfolg)
+    // Simulated Control Point: records writes and answers by indication (success by default).
     private static (ControlPoint Cp, ConcurrentQueue<byte[]> Written) FakeTrainer(Func<byte[], byte>? result = null, Task? hold = null)
     {
         var written = new ConcurrentQueue<byte[]>();

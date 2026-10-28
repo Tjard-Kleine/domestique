@@ -3,16 +3,17 @@ using Windows.Devices.Bluetooth.Advertisement;
 
 namespace Domestique.Ble;
 
+// Bluetooth LE scans for trainers and heart rate straps.
 public static class BleScan
 {
-    // Liefert die Adresse des ersten Geräts, das den Service anbietet, oder null nach Ablauf der Zeit.
+    // Address of the first device offering the service, or null after the timeout.
     public static async Task<ulong?> FindFirstAsync(Guid serviceUuid, TimeSpan timeout)
     {
         var found = await ScanAsync(serviceUuid, timeout, stopAtFirst: true);
         return found.Count > 0 ? found[0].Address : null;
     }
 
-    // Alle Geräte in Reichweite. filter = null zeigt auch Trainer, die ihren Service nicht ankündigen.
+    // All devices in range. filter = null also finds trainers that don't advertise their service.
     public static Task<IReadOnlyList<(ulong Address, string Name)>> ScanAllAsync(Guid? filter, TimeSpan duration) =>
         ScanAsync(filter, duration, stopAtFirst: false);
 
@@ -27,11 +28,11 @@ public static class BleScan
             lock (found)
             {
                 if (!found.TryGetValue(e.BluetoothAddress, out var name) || name.Length == 0)
-                    found[e.BluetoothAddress] = e.Advertisement.LocalName;   // Name kommt oft erst mit der Scan-Antwort
+                    found[e.BluetoothAddress] = e.Advertisement.LocalName;   // the name often arrives with the scan response
             }
             if (stopAtFirst) done.TrySetResult();
         };
-        watcher.Stopped += (_, e) =>                                      // z. B. Bluetooth ausgeschaltet
+        watcher.Stopped += (_, e) =>                                      // e.g. Bluetooth turned off
         {
             if (e.Error != BluetoothError.Success)
                 done.TrySetException(new InvalidOperationException($"Bluetooth scan stopped ({e.Error}). Is Bluetooth on?"));

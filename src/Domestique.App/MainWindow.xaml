@@ -9,27 +9,26 @@
         UseLayoutRounding="True" TextOptions.TextFormattingMode="Display"
         Loaded="Window_Loaded" Drop="Window_Drop" MouseLeftButtonDown="Window_MouseLeftButtonDown">
     <Window.Resources>
-        <!-- weicher Schein am unteren Rand einer Meldung (Sheet 10), Farbe je nach Meldung -->
+        <!-- soft glow at the bottom edge of the Bluetooth card -->
         <RadialGradientBrush x:Key="GlowMask">
             <GradientStop Color="#C0000000" Offset="0"/>
             <GradientStop Color="#50000000" Offset="0.5"/>
             <GradientStop Color="#00000000" Offset="1"/>
         </RadialGradientBrush>
 
-        <!-- Rand rechts, der beim Darüberfahren leicht aufleuchtet (Karte auf- und zuklappen) -->
+        <!-- right edge that lights up on hover (expand/collapse the map) -->
         <LinearGradientBrush x:Key="EdgeGlow" StartPoint="0,0" EndPoint="1,0">
             <GradientStop Color="#00FFFFFF" Offset="0"/>
             <GradientStop Color="#24FFFFFF" Offset="1"/>
         </LinearGradientBrush>
 
-        <!-- Texte im HUD: Archivo Black wie im Entwurf. Ränder setzen die Figma-Grundlinie:
-             WPF setzt die Grundlinie dieser Schrift bei 1,035 × Größe, Figma bei 0,878 × Größe. -->
+        <!-- HUD text on its Figma baseline: WPF puts this font's baseline at 1.035 × size, Figma at 0.878 × size -->
         <Style x:Key="HudText" TargetType="TextBlock">
             <Setter Property="FontFamily" Value="{DynamicResource HudFont}"/>
             <Setter Property="TextOptions.TextFormattingMode" Value="Ideal"/>
             <Setter Property="VerticalAlignment" Value="Top"/>
         </Style>
-        <!-- Werte oben: Zahl 29,76 auf Grundlinie 39,1; Einheit 9,92 auf derselben Grundlinie -->
+        <!-- top values: number 29.76 and unit 9.92 on the same baseline (39.1) -->
         <Style x:Key="StatNumber" TargetType="TextBlock" BasedOn="{StaticResource HudText}">
             <Setter Property="FontSize" Value="29.76"/>
             <Setter Property="Margin" Value="0,8.33,0,0"/>
@@ -39,7 +38,7 @@
             <Setter Property="Margin" Value="0,28.8,0,0"/>
             <Setter Property="HorizontalAlignment" Value="Center"/>
         </Style>
-        <!-- kleine Beschriftung in der Kartenkarte, Grundlinie 21,8 -->
+        <!-- small label on the map card, baseline 21.8 -->
         <Style x:Key="HudLabel" TargetType="TextBlock" BasedOn="{StaticResource HudText}">
             <Setter Property="FontSize" Value="10"/>
             <Setter Property="Margin" Value="13,11.45,13,0"/>
@@ -49,11 +48,11 @@
             <Setter Property="Fill" Value="{DynamicResource TextBrush}"/>
             <Setter Property="VerticalAlignment" Value="Top"/>
         </Style>
-        <!-- Symbol über der Einheit: unten bündig bei 28 -->
+        <!-- icon above the unit, bottom-aligned at 28 -->
         <Style x:Key="StatIcon" TargetType="Path" BasedOn="{StaticResource HudIcon}">
             <Setter Property="HorizontalAlignment" Value="Center"/>
         </Style>
-        <!-- minimiert: alle Zahlen so groß wie die Watt (21), Symbole mittig zur Zahl -->
+        <!-- small notch: all numbers as large as the watts (21), icons centered on the number -->
         <Style x:Key="MiniSlot" TargetType="DockPanel">
             <Setter Property="Margin" Value="0,0,14,0"/>
             <Setter Property="Background" Value="Transparent"/>
@@ -75,9 +74,8 @@
         </Style>
     </Window.Resources>
 
-    <!-- Außen je 14 px für die Notch-Ohren, damit sich die Breite beim Andocken nicht ändert, dazu Platz für die
-         ausgeklappte Karte. Unten 12 px durchsichtig: Platz zum Nachfedern beim Aufklappen. Durchsichtige Pixel lassen Klicks durch. -->
-    <!-- Die Insel sitzt oben mittig; die Ohren hängen direkt an ihr, auch wenn sie minimiert schmal ist -->
+    <!-- 14 px per side for the notch ears; 12 px transparent bottom margin for the open spring (clicks pass through) -->
+    <!-- The island sits top center; the ears stay attached to it, also when minimized. -->
     <Grid x:Name="Root" Margin="0,0,0,12">
       <Grid x:Name="IslandGrid" HorizontalAlignment="Center" VerticalAlignment="Top">
         <Grid.ColumnDefinitions>
@@ -88,11 +86,11 @@
         <Path x:Name="LeftEar" Data="M0,0 L14,0 L14,14 A14,14 0 0 0 0,0 Z" VerticalAlignment="Top" Visibility="Collapsed"/>
         <Path x:Name="RightEar" Grid.Column="2" Data="M14,0 L0,0 L0,14 A14,14 0 0 1 14,0 Z" VerticalAlignment="Top" Visibility="Collapsed"/>
 
-        <!-- Notch wie im Entwurf: 401 × 200, Kopfzeile ab 7, HUD-Karte ab 42, je 10 Rand -->
+        <!-- Notch as in the design: 401 × 200, header from 7, HUD card from 42, 10 padding -->
         <Border x:Name="Shell" Grid.Column="1" Width="401" BorderBrush="{DynamicResource StrokeBrush}" BorderThickness="1"
                 CornerRadius="{DynamicResource ShellRadius}" Padding="10,7,10,10">
             <Border.ContextMenu>
-                <!-- Texte mit Tastenkürzeln setzt der Code beim Öffnen, die Kürzel sind änderbar -->
+                <!-- headers with shortcuts are set when the menu opens -->
                 <ContextMenu Opened="ContextMenu_Opened">
                     <MenuItem Header="Load route …" Click="LoadRoute_Click"/>
                     <MenuItem Header="Export ride" Click="Export_Click"/>
@@ -104,10 +102,10 @@
             </Border.ContextMenu>
             <Grid>
             <StackPanel x:Name="Expanded">
-                <!-- Kopfzeile wie im Notch-Vorbild: links Ansichten, rechts Werkzeuge -->
+                <!-- == Header: views left, tools right == -->
                 <Grid x:Name="Header" Height="26">
                     <Grid x:Name="TabBar" HorizontalAlignment="Left">
-                        <!-- Auswahl gleitet zum gewählten Tab und federt nach -->
+                        <!-- the selection glides to the chosen tab -->
                         <Border x:Name="TabPill" Width="34" Height="26" CornerRadius="13" HorizontalAlignment="Left" VerticalAlignment="Center"
                                 Background="{DynamicResource ChipBrush}"/>
                         <StackPanel Orientation="Horizontal">
@@ -116,7 +114,7 @@
                         </StackPanel>
                     </Grid>
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                        <!-- Zustand und Anzahl verbundener Bluetooth-Geräte, Klick öffnet die Bluetooth-Einstellungen -->
+                        <!-- link state and number of connected devices; click opens the Bluetooth settings -->
                         <Button x:Name="LinkButton" Style="{StaticResource LinkPill}" Click="LinkButton_Click">
                             <StackPanel Orientation="Horizontal">
                                 <Ellipse x:Name="LinkDot" Width="7" Height="7" VerticalAlignment="Center" Fill="{DynamicResource MutedBrush}"/>
@@ -127,11 +125,11 @@
                             <Path Data="M0,0 L0,12.5 L3.4,9.4 L5.8,14.6 L8,13.6 L5.6,8.5 L10.2,8.5 Z" Height="13" Stretch="Uniform"
                                   Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}"/>
                         </ToggleButton>
-                        <!-- minimieren: nur noch die Werte in einer kleinen Notch -->
+                        <!-- minimize to the small notch -->
                         <Button x:Name="MinimizeButton" Style="{StaticResource NavButton}" Content="&#xE70E;" ToolTip="Minimize" Click="Minimize_Click"/>
                         <Button x:Name="SettingsButton" Style="{StaticResource NavButton}" Content="&#xE713;" Click="SettingsMenu_Click"/>
                     </StackPanel>
-                    <!-- kurze Hinweise mittig in der Kopfzeile: eigene Fläche, damit auch längere Texte über den Tabs lesbar sind -->
+                    <!-- short notices centered in the header, on their own surface so longer texts stay readable over the tabs -->
                     <Border x:Name="NoticeBar" Height="26" CornerRadius="13" Padding="11,0,12,0" HorizontalAlignment="Center"
                             Opacity="0" IsHitTestVisible="False">
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
@@ -141,37 +139,21 @@
                     </Border>
                 </Grid>
 
-                <!-- Inaktive Ansichten sind nur verborgen (Hidden): Alle Tabs sind so hoch wie die Übersicht, der Tab-Wechsel
-                     ändert die Fenstergröße nicht. Die Übersicht ist oben ausgerichtet, damit das Fenster auch wieder schrumpft.
-                     Der Zuschnitt reicht 8 px in den Rand, damit Inhalte beim Erscheinen nachfedern können, ohne abgeschnitten zu werden. -->
+                <!-- inactive views are Hidden so tab switches never resize the window; the clip reaches 8 px into the padding for overshoot -->
                 <Grid x:Name="Views" Margin="-8,0,-8,-8" ClipToBounds="True">
                 <Grid x:Name="ViewsArea" Margin="8,9,8,8">
 
-                    <!-- ===== Übersicht: HUD wie im Figma-Entwurf, rechts daneben ausklappbar Karte und Steigungsprofil ===== -->
+                    <!-- == Overview: HUD as in the Figma design, expandable map and gradient profile to the right == -->
                     <Grid x:Name="HomeView" VerticalAlignment="Top" HorizontalAlignment="Left">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="381"/>
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
 
-                        <!-- HUD-Karte 381 × 148. Alle Ränder darin sind Figma-Koordinaten ab der Außenkante der Karte
-                             (Margin -1 hebt den Rahmen auf). Texte stehen auf ihrer Figma-Grundlinie. -->
+                        <!-- HUD card 381 × 148: margins are Figma coordinates from the outer edge (Margin -1 cancels the border) -->
                         <Border x:Name="RideCard" Style="{StaticResource Card}" Height="148" Padding="0">
                             <Grid Margin="-1">
-                                <!-- Vintage: vier Farbstreifen laufen unten rechts schräg durch die Karte, an ihrer Form abgeschnitten -->
-                                <Canvas Visibility="{DynamicResource StripeVisibility}" IsHitTestVisible="False">
-                                    <Canvas.Clip>
-                                        <RectangleGeometry Rect="0,0,381,148" RadiusX="15" RadiusY="15"/>
-                                    </Canvas.Clip>
-                                    <Polygon Points="319.7,153 397.7,-5 408.4,-5 330.4,153" Fill="{DynamicResource Stripe1Brush}"/>
-                                    <Polygon Points="330.4,153 408.4,-5 419.1,-5 341.1,153" Fill="{DynamicResource Stripe2Brush}"/>
-                                    <Polygon Points="341.1,153 419.1,-5 429.8,-5 351.8,153" Fill="{DynamicResource Stripe3Brush}"/>
-                                    <Polygon Points="351.8,153 429.8,-5 440.5,-5 362.5,153" Fill="{DynamicResource Stripe4Brush}"/>
-                                </Canvas>
-
-                                <!-- oben: Tempo, Strecke, Höhenmeter, Zeit über die ganze Breite verteilt; Symbol über der Einheit.
-                                     Lange Fahrten (85.2 KM, 1250 M, 3:12:45) passen nicht in 355 px: Dann wird die Zeile etwas kleiner,
-                                     mit mindestens 12 px zwischen den Werten. -->
+                                <!-- top values spread over the width; long values shrink the row (at least 12 px between values) -->
                                 <Viewbox Margin="13,0,13,0" StretchDirection="DownOnly" Stretch="Uniform" HorizontalAlignment="Left" VerticalAlignment="Top">
                                 <Grid x:Name="TopStats" MinWidth="355">
                                     <Grid.ColumnDefinitions>
@@ -214,12 +196,12 @@
                                 </Grid>
                                 </Viewbox>
 
-                                <!-- Fortschritt auf der Strecke; ohne Strecke nur die dunkle Spur als Trennlinie -->
+                                <!-- route progress; without a route just the dark track as a divider -->
                                 <Border Margin="13,45,14,0" Height="6" VerticalAlignment="Top" CornerRadius="3" Background="{DynamicResource TrackBrush}">
                                     <Border x:Name="ProgressFill" HorizontalAlignment="Left" Width="0" CornerRadius="1.5" Background="{DynamicResource TextBrush}"/>
                                 </Border>
 
-                                <!-- Avatar (Körper 74 × 59 wie im Entwurf), darunter die Leistungszone nach FTP. Reagiert auf Maus und Antippen. -->
+                                <!-- avatar (body 74 × 59 as in the design) with the FTP power zone below; reacts to hover and tap -->
                                 <local:Avatar x:Name="Mascot" Width="96" Height="81" Margin="5,45.6,0,0" HorizontalAlignment="Left" VerticalAlignment="Top"
                                               IsHitTestVisible="True" MouseEnter="Mascot_MouseEnter" MouseLeave="Mascot_MouseLeave" MouseLeftButtonDown="Mascot_Poke"/>
                                 <StackPanel x:Name="ZoneBar" Orientation="Horizontal" Margin="18,129,0,0" HorizontalAlignment="Left" VerticalAlignment="Top">
@@ -231,47 +213,48 @@
                                     <Border Width="10" Height="6" CornerRadius="3"/>
                                 </StackPanel>
 
-                                <!-- Tour: gelber Balken wie in der TV-Grafik, im Abstand zwischen Avatar und Watt -->
-                                <Rectangle Visibility="{DynamicResource AccentBarVisibility}" Width="4" Height="45.5" RadiusX="2" RadiusY="2" Margin="96,63.5,0,0"
-                                           HorizontalAlignment="Left" VerticalAlignment="Top" Fill="{DynamicResource AccentBrush}"/>
+                                <Grid Margin="106,0,25,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <!-- watts 16 px right of the avatar; bolt and w follow with 2 px; four digits shrink instead of overlapping -->
+                                    <Grid Height="89.1" Margin="0,40.62,6,0" VerticalAlignment="Top">
+                                        <Viewbox x:Name="PowerColumn" StretchDirection="DownOnly" Stretch="Uniform" HorizontalAlignment="Left" VerticalAlignment="Center">
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Style="{DynamicResource BigNumber}" FontSize="66.1"><Run x:Name="PowerRun" Text="0"/></TextBlock>
+                                                <Grid x:Name="PowerUnit" Width="29" Margin="2,0,0,0">
+                                                    <Path x:Name="BoltIcon" Style="{StaticResource HudIcon}" Width="16.38" Height="25.9" Margin="0,21.5,0,0" HorizontalAlignment="Center"/>
+                                                    <TextBlock Text="w" Style="{DynamicResource BigNumber}" FontSize="29.74" Margin="0,38.5,0,0"
+                                                               VerticalAlignment="Top" HorizontalAlignment="Center"/>
+                                                </Grid>
+                                            </StackPanel>
+                                        </Viewbox>
+                                    </Grid>
 
-                                <!-- Watt: 16 px rechts vom Avatar (90), rechtsbündig an Blitz und w, die immer an derselben Stelle stehen
-                                     wie die Symbole von Puls und Kadenz. Platz für drei Ziffern; vierstellige Werte werden etwas kleiner
-                                     und bleiben dabei auf ihrer Höhe (Grundlinie 109). -->
-                                <Grid Width="132.3" Height="89.1" Margin="106,40.62,0,0" HorizontalAlignment="Left" VerticalAlignment="Top">
-                                    <Viewbox x:Name="PowerColumn" StretchDirection="DownOnly" Stretch="Uniform" HorizontalAlignment="Right" VerticalAlignment="Center">
-                                        <TextBlock Style="{DynamicResource BigNumber}" FontSize="{DynamicResource HeroNumberSize}"><Run x:Name="PowerRun" Text="0"/></TextBlock>
-                                    </Viewbox>
-                                </Grid>
-                                <!-- 2 px Luft zur Zahl, damit sich w und Ziffern nicht mehr berühren -->
-                                <Grid x:Name="PowerUnit" Width="29" Margin="240.3,40.62,0,0" HorizontalAlignment="Left" VerticalAlignment="Top">
-                                    <Path x:Name="BoltIcon" Style="{StaticResource HudIcon}" Width="16.38" Height="25.9" Margin="0,21.5,0,0" HorizontalAlignment="Center"/>
-                                    <TextBlock Text="w" Style="{DynamicResource BigNumber}" FontSize="{DynamicResource UnitSize}" Margin="0,38.5,0,0"
-                                               VerticalAlignment="Top" HorizontalAlignment="Center"/>
-                                </Grid>
-
-                                <!-- Puls und Kadenz: rechtsbündig, Symbol oben rechts an der Zahl, 1,6 px Abstand wie bei den Einheiten oben -->
-                                <Grid x:Name="SideColumn" Margin="0,0,25,0" HorizontalAlignment="Right">
-                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,54.26,0,0"
-                                                Background="Transparent" ToolTip="Heart rate (bpm)">
-                                        <TextBlock Style="{DynamicResource BigNumber}" FontSize="{DynamicResource SideNumberSize}"><Run x:Name="HeartRun" Text="0"/></TextBlock>
-                                        <Path x:Name="HeartIcon" Style="{StaticResource HudIcon}" Width="11.02" Height="9.92" Margin="1.6,14.18,0,0"/>
-                                    </StackPanel>
-                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,82.27,0,0"
-                                                Background="Transparent" ToolTip="Cadence (rpm)">
-                                        <TextBlock Style="{DynamicResource BigNumber}" FontSize="{DynamicResource SideNumberSize}"><Run x:Name="CadenceRun" Text="0"/></TextBlock>
-                                        <Path x:Name="CadenceIcon" Style="{StaticResource HudIcon}" Width="11.57" Height="11.57" Margin="1.6,14.71,0,0"/>
-                                    </StackPanel>
+                                    <!-- heart rate and cadence right-aligned, icon top right of the number with 1.6 px spacing like the units above -->
+                                    <Grid x:Name="SideColumn" Grid.Column="1">
+                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,54.26,0,0"
+                                                    Background="Transparent" ToolTip="Heart rate (bpm)">
+                                            <TextBlock Style="{DynamicResource BigNumber}" FontSize="29.74"><Run x:Name="HeartRun" Text="0"/></TextBlock>
+                                            <Path x:Name="HeartIcon" Style="{StaticResource HudIcon}" Width="11.02" Height="9.92" Margin="1.6,14.18,0,0"/>
+                                        </StackPanel>
+                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,82.27,0,0"
+                                                    Background="Transparent" ToolTip="Cadence (rpm)">
+                                            <TextBlock Style="{DynamicResource BigNumber}" FontSize="29.74"><Run x:Name="CadenceRun" Text="0"/></TextBlock>
+                                            <Path x:Name="CadenceIcon" Style="{StaticResource HudIcon}" Width="11.57" Height="11.57" Margin="1.6,14.71,0,0"/>
+                                        </StackPanel>
+                                    </Grid>
                                 </Grid>
 
-                                <!-- ERG: an mit Ziel in Watt, sonst nur „ERG OFF“; um dasselbe Stück nach links wie die Watt -->
+                                <!-- ERG: on with the target in watts, otherwise "ERG OFF" -->
                                 <Border x:Name="ErgPill" Margin="113,119,0,0" Height="16" CornerRadius="8" Padding="7,0"
                                         HorizontalAlignment="Left" VerticalAlignment="Top" Background="{DynamicResource AccentBrush}">
                                     <TextBlock x:Name="ErgPillText" Text="ERG OFF" FontFamily="{DynamicResource HudFont}" FontSize="10" VerticalAlignment="Center"
                                                Foreground="{DynamicResource OnAccentBrush}" TextOptions.TextFormattingMode="Ideal"/>
                                 </Border>
 
-                                <!-- kein Knopf: Mit Strecke leuchtet der rechte Rand beim Darüberfahren auf, ein Klick klappt die Karte aus -->
+                                <!-- not a button: with a route the right edge lights up on hover; a click expands the map -->
                                 <Border x:Name="MapOpener" Width="14" HorizontalAlignment="Right" Background="Transparent" Cursor="Hand" Visibility="Collapsed"
                                         ToolTip="Show map" MouseEnter="MapEdge_MouseEnter" MouseLeave="MapEdge_MouseLeave" MouseLeftButtonDown="MapEdge_Click">
                                     <Border CornerRadius="0,15,15,0" Opacity="0" IsHitTestVisible="False" Background="{StaticResource EdgeGlow}">
@@ -282,14 +265,14 @@
                             </Grid>
                         </Border>
 
-                        <!-- Karte und Steigungsprofil der Strecke, gleiche Höhe wie das HUD. Rechter Rand klappt sie wieder ein. -->
+                        <!-- map and gradient profile, as tall as the HUD; its right edge collapses it again -->
                         <Border x:Name="MapCard" Grid.Column="1" Style="{StaticResource Card}" Width="320" Height="148" Margin="8,0,0,0" Padding="0"
                                 Visibility="Collapsed">
                             <Grid Margin="-1">
                                 <TextBlock x:Name="RouteNameText" Style="{StaticResource HudLabel}" Margin="13,11.45,112,0" TextTrimming="CharacterEllipsis"/>
                                 <TextBlock x:Name="RouteDistanceText" Style="{StaticResource HudLabel}" HorizontalAlignment="Right"
                                            Foreground="{DynamicResource SubtleBrush}"/>
-                                <!-- gefahrener Teil in der Akzentfarbe -->
+                                <!-- ridden part in the accent color -->
                                 <Canvas Width="102" Height="102" Margin="13,33,0,0" HorizontalAlignment="Left" VerticalAlignment="Top">
                                     <Polyline x:Name="MapLine" StrokeThickness="1.5" Stroke="{DynamicResource SubtleBrush}" StrokeLineJoin="Round" Opacity="0.7"/>
                                     <Polyline x:Name="MapDone" StrokeThickness="2.5" Stroke="{DynamicResource AccentBrush}" StrokeLineJoin="Round"/>
@@ -307,7 +290,7 @@
                         </Border>
                     </Grid>
 
-                    <!-- ===== Strecke wählen: Datei hinzufügen oder aus der Bibliothek, rechts oben bestätigen ===== -->
+                    <!-- == Route view: add a file or pick from the library, confirm top right == -->
                     <Grid x:Name="RouteView" Visibility="Hidden">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto"/>
@@ -330,7 +313,7 @@
                             </Border>
                         </DockPanel>
 
-                        <!-- Hinzufügen: Datei aufs Overlay ziehen oder auswählen -->
+                        <!-- add: drop a file on the overlay or choose one -->
                         <Grid x:Name="AddPanel" Grid.Row="1" Visibility="Collapsed">
                             <Rectangle RadiusX="12" RadiusY="12" Stroke="{DynamicResource StrokeBrush}" StrokeThickness="1.5" StrokeDashArray="4 3"
                                        Fill="{DynamicResource CardBrush}"/>
@@ -345,7 +328,7 @@
                             </StackPanel>
                         </Grid>
 
-                        <!-- Bibliothek: eigene oder mitgelieferte Strecken in zwei Spalten, ganz vorn „Keine Strecke“ -->
+                        <!-- library: own or built-in routes in two columns, "No route" first -->
                         <ListBox x:Name="RouteList" Grid.Row="1" Style="{StaticResource CompactList}" MouseDoubleClick="ConfirmRoute_Click">
                             <ListBox.ItemsPanel>
                                 <ItemsPanelTemplate>
@@ -364,7 +347,7 @@
                         </ListBox>
                     </Grid>
 
-                    <!-- ===== Bluetooth aus: bleibt stehen, bis man tippt (Windows-Einstellungen) oder Bluetooth einschaltet ===== -->
+                    <!-- == Bluetooth off: stays until tapped (Windows settings) or Bluetooth is switched on == -->
                     <Border x:Name="BluetoothCard" Visibility="Collapsed" CornerRadius="{DynamicResource CardRadius}" Background="{DynamicResource ToastBrush}"
                             BorderBrush="{DynamicResource StrokeBrush}" BorderThickness="1" MouseLeftButtonDown="BluetoothCard_Click" Cursor="Hand">
                         <Grid ClipToBounds="True">
@@ -386,15 +369,13 @@
                 </Grid>
             </StackPanel>
 
-            <!-- ===== Minimiert: kleine Notch mit Avatar und allen Werten der Übersicht, gleiche Schrift und Symbole. Nur per Knopf. ===== -->
+            <!-- == Small notch: avatar and the chosen values, same font and icons as the HUD == -->
             <DockPanel x:Name="CompactBar" Height="36" Visibility="Collapsed" ClipToBounds="True">
                 <local:Avatar x:Name="MiniMascot" Width="38" Height="31" Margin="0,0,9,0" VerticalAlignment="Center" IsHitTestVisible="True"
                               MouseEnter="Mascot_MouseEnter" MouseLeave="Mascot_MouseLeave" MouseLeftButtonDown="Mascot_Poke"/>
                 <Button x:Name="ExpandButton" DockPanel.Dock="Right" Style="{StaticResource NavButton}" Content="&#xE70D;" ToolTip="Expand"
                         VerticalAlignment="Center" Click="Expand_Click"/>
-                <!-- Watt, Puls, Kadenz und Tempo springen ständig: feste Felder (drei bzw. zwei Stellen), die Symbole stehen still,
-                     mehr Stellen werden etwas kleiner. Strecke, Höhenmeter und Zeit wachsen nur: Ihr Feld ist so breit wie der Wert
-                     (FitCompactSlots). Welche Felder zu sehen sind, steht in den Einstellungen; die Breite der Notch ergibt sich daraus. -->
+                <!-- fixed slots for jumping values (icons stay put), value-sized slots for growing ones (FitCompactSlots) -->
                 <StackPanel x:Name="CompactValues" Orientation="Horizontal">
                     <DockPanel Style="{StaticResource MiniSlot}" Tag="Power" Width="51.8" ToolTip="Power (W)">
                         <Path x:Name="MiniBoltIcon" Style="{StaticResource MiniIcon}" Width="7.78" Height="12.3"/>
@@ -427,9 +408,9 @@
                 </StackPanel>
             </DockPanel>
 
-            <!-- Start wie in Sheet 1 und 2: zeichnet Karte, Partikel und den Avatar, solange der Start läuft -->
+            <!-- launch animation: draws card, particles and the avatar while the launch runs -->
             <local:GreetingView x:Name="Greeting" Margin="-10,-7,-10,-10" Visibility="Collapsed"/>
-            <!-- Strecke laden: Übergang, der Avatar fährt über eine gerade Linie mit ein paar Steinchen -->
+            <!-- route loaded: transition where the avatar rides a straight line with a few stones -->
             <local:RideView x:Name="Ride" Margin="-10,-7,-10,-10" Visibility="Collapsed"/>
             </Grid>
         </Border>

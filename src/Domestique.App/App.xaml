@@ -5,8 +5,7 @@
     <Application.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
-                <!-- [0] wird beim Stilwechsel ausgetauscht -->
-                <ResourceDictionary Source="Themes/Standard.xaml"/>
+                <ResourceDictionary Source="Themes/Theme.xaml"/>
                 <ResourceDictionary Source="Themes/Controls.xaml"/>
             </ResourceDictionary.MergedDictionaries>
         </ResourceDictionary>

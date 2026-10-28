@@ -1,5 +1,4 @@
 ﻿using System.Diagnostics;
-using System.Windows;
 using System.Windows.Input;
 using System.Windows.Threading;
 using Domestique.Core;
@@ -7,17 +6,17 @@ using Domestique.Core.Control;
 
 namespace Domestique.App;
 
-// Demo-Modus zum Anschauen ohne Trainer: Start mit „--demo“. Kein Bluetooth, keine Aufzeichnung auf die Platte.
-// Ein simulierter Trainer liefert Watt, Trittfrequenz und Puls; gesteuert wird mit der Tastatur (vorher einmal
-// aufs Overlay klicken). Im ERG-Modus hält er wie ein echter Trainer das eingestellte Ziel.
+// Demo mode without a trainer: start with "--demo". No Bluetooth, nothing is saved to disk. A simulated trainer
+// sends power, cadence and heart rate and is controlled with the keyboard (click the overlay first; H lists the keys).
+// In ERG it holds the target like a real trainer.
 public partial class MainWindow
 {
     public static readonly bool Demo = Environment.GetCommandLineArgs().Contains("--demo", StringComparer.OrdinalIgnoreCase);
 
-    // Mitte jeder Zone in Prozent der FTP (Coggan: Z1 < 55, Z2 < 76, Z3 < 91, Z4 < 106, Z5 < 121, Z6 darüber)
+    // Middle of each zone as a share of FTP (Coggan: Z1 < 55, Z2 < 76, Z3 < 91, Z4 < 106, Z5 < 121, Z6 above)
     private static readonly double[] ZoneMiddle = [0, 0.45, 0.65, 0.83, 0.98, 1.13, 1.35];
 
-    // Rundgang: jede Zone ein paar Sekunden, dann Pause (0 W) und kurz keine Daten (Avatar schläft)
+    // Tour: each zone a few seconds, then 0 W and briefly no data (the avatar falls asleep)
     private static readonly (int Zone, double Seconds, bool Data)[] Tour =
         [(1, 5, true), (2, 5, true), (3, 5, true), (4, 5, true), (5, 5, true), (6, 5, true), (0, 4, true), (0, 6, false)];
 
@@ -28,9 +27,7 @@ public partial class MainWindow
     private double _demoPower, _demoHeart = 72, _demoTourLeft;
     private bool _demoData = true, _demoConnected, _demoBluetoothOff;
 
-    private string TrainerName => _trainer?.Name ?? (Demo ? "Demo trainer" : "Trainer");
-
-    // Roter Aufnahmepunkt wie bei einer echten Fahrt, ohne dass etwas gespeichert wird
+    // Shows the "Recording started" notice in the demo too, without saving anything.
     private bool Recording => _ride.Current is not null || (Demo && _demoConnected && _demoData && _demoPower > 1);
 
     private void StartDemo()
@@ -41,8 +38,8 @@ public partial class MainWindow
         _demoTimer.Tick += (_, _) => DemoTick();
         _demoTimer.Start();
         PreviewKeyDown += DemoKey;
-        Motion.After(1200, () => _demoConnected = true);                   // kurz suchen, dann verbunden
-        Notice(NoticeKind.Info, "Demo · click the overlay, H for keys", 8);   // die Notch ist schmal: Tastenliste per H
+        Motion.After(1200, () => _demoConnected = true);                   // search briefly, then connected
+        Notice(NoticeKind.Info, "Demo · click the overlay, H for keys", 8);   // the notch is narrow: the key list is behind H
     }
 
     private void DemoTick()
@@ -51,16 +48,16 @@ public partial class MainWindow
         if (!_demoConnected || !_demoData)
         {
             if (!_demoConnected && _state.Current.Connected) _state.Update(s => s with { Connected = false });
-            return;                                                         // keine Pakete: nach 3 s „keine Daten“
+            return;                                                         // no packets: "no data" after 3 s
         }
-        // wie ein Trainer: geht weich auf das Ziel (im ERG das ERG-Ziel), mit etwas Rauschen
+        // like a trainer: approaches the target (the ERG target in ERG) smoothly, with some noise
         int target = _guard.Mode == ControlMode.Erg && _guard.TargetPowerW is int erg ? erg : _demoWatts;
         _demoPower += (target - _demoPower) * 0.35;
         int power = target <= 0 && _demoPower < 3 ? 0 : (int)Math.Round(Math.Max(0, _demoPower + _demoRng.Next(-4, 5)));
         _demoLast.Enqueue(power);
-        if (_demoLast.Count > 12) _demoLast.Dequeue();                      // 3-s-Mittel wie beim echten Trainer
+        if (_demoLast.Count > 12) _demoLast.Dequeue();                      // 3 s average like a real trainer
         int avg = (int)Math.Round(_demoLast.Average());
-        _demoHeart += ((power > 0 ? 95 + power * 0.32 : 72) - _demoHeart) * 0.03;   // Puls folgt träge
+        _demoHeart += ((power > 0 ? 95 + power * 0.32 : 72) - _demoHeart) * 0.03;   // heart rate follows slowly
         int? cadence = power > 0 ? 82 + power / 40 + _demoRng.Next(-2, 3) : 0;
         _state.Update(s => s with
         {
@@ -104,7 +101,7 @@ public partial class MainWindow
         _demoWatts = (int)Math.Round(ZoneMiddle[zone] * _settings.FtpW);
     }
 
-    // Bluetooth aus: Verbindung weg und Bluetooth-Bildschirm. Wieder an: kurz suchen, dann verbunden.
+    // Bluetooth off: link lost and Bluetooth screen. On again: search briefly, then connected.
     private void DemoBluetooth(bool off)
     {
         _demoBluetoothOff = off;

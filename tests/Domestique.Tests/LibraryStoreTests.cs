@@ -1,5 +1,4 @@
-using Domestique.Core.Library;
-using Xunit;
+﻿using Domestique.Core.Library;
 
 namespace Domestique.Tests;
 

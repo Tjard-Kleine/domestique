@@ -3,8 +3,8 @@ using System.Text;
 
 namespace Domestique.Core.Routes;
 
-// Virtuelle Trainingsstrecken, die die App mitbringt. Sie werden als GPX erzeugt und laufen dadurch durch denselben
-// Lader wie eigene Strecken. Die Formen sind erfunden, die Koordinaten stehen für keinen echten Ort.
+// Virtual training routes shipped with the app. They are generated as GPX and go through the same loader as user
+// routes. Shapes are made up; the coordinates are not a real place.
 public static class BuiltInRoutes
 {
     private const double OriginLat = 47.2, OriginLon = 11.4, KmPerDegree = 6371 * Math.PI / 180;
@@ -13,19 +13,19 @@ public static class BuiltInRoutes
 
     private static readonly Course[] Courses =
     [
-        // flach mit leichten Wellen, unter 2 %
+        // flat with gentle waves, below 2 %
         new("Flatland Loop", 20,
             t => (Math.Cos(2 * Math.PI * t) + 0.18 * Math.Sin(6 * Math.PI * t), 0.6 * Math.Sin(2 * Math.PI * t)),
             d => 50 + 6 * Math.Sin(2 * Math.PI * d / 5000) + 3 * Math.Sin(2 * Math.PI * d / 1700)),
-        // drei Anstiege mit 4 bis 6 %
+        // three climbs of 4 to 6 %
         new("Rolling Hills", 32,
             t => (Math.Cos(2 * Math.PI * t) + 0.25 * Math.Cos(6 * Math.PI * t), Math.Sin(2 * Math.PI * t) + 0.2 * Math.Sin(4 * Math.PI * t)),
             d => 200 + Hill(d, 6000, 90, 1500) + Hill(d, 15000, 130, 1900) + Hill(d, 25000, 70, 1100)),
-        // Bergankunft in Serpentinen, im Mittel 7 %
+        // summit finish on switchbacks, 7 % on average
         new("Summit Finish", 14,
             t => (0.6 * Math.Sin(2 * Math.PI * 7 * t), 4 * t),
             d => 600 + 980 * d / 14000 + 8 * Math.Sin(2 * Math.PI * d / 2000)),
-        // fast flaches Oval zum Durchziehen
+        // nearly flat oval
         new("Time Trial Oval", 30,
             t => (Math.Cos(2 * Math.PI * t), 0.45 * Math.Sin(2 * Math.PI * t)),
             d => 30 + 2 * Math.Sin(2 * Math.PI * d / 7500)),
@@ -37,8 +37,8 @@ public static class BuiltInRoutes
 
     public static Route Load(string name) => GpxLoader.Load(Gpx(name), name);
 
-    // Punkte alle 20 m, Form auf die Ziellänge skaliert
-    public static string Gpx(string name)
+    // A point every 20 m, shape scaled to the target length.
+    private static string Gpx(string name)
     {
         var c = Find(name);
         const int Samples = 4000;

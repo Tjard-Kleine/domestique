@@ -9,28 +9,27 @@ using System.Windows.Threading;
 
 namespace Domestique.App;
 
-// Mikroanimationen nach den Sheets in docs/sheets: Alles wächst etwas über das Ziel hinaus und schnappt leicht zurück.
-// Nur kurze Animationen bei Ereignissen, keine Dauerschleifen: Zwischen den Animationen zeichnet WPF nichts neu.
+// Micro-animations: things overshoot slightly and settle. Only short animations on events, no endless loops,
+// so WPF redraws nothing between them.
 internal static class Motion
 {
-    // In Windows „Animationseffekte“ ausgeschaltet: Alles springt sofort ans Ziel (auch für Vorschaubilder)
+    // Windows "Animation effects" off: everything jumps to the end
     public static bool Enabled { get; set; } = SystemParameters.ClientAreaAnimation;
 
-    public static readonly IEasingFunction Pop = Ease(new BackEase { Amplitude = 0.9, EasingMode = EasingMode.EaseOut });       // kurze Wege: ~30 % des Wegs drüber
-    public static readonly IEasingFunction Expand = Ease(new BackEase { Amplitude = 0.3, EasingMode = EasingMode.EaseOut });    // lange Wege: ~5 % des Wegs drüber
-    public static readonly IEasingFunction Glide = Ease(new BackEase { Amplitude = 0.4, EasingMode = EasingMode.EaseOut });     // Verschieben
-    public static readonly IEasingFunction Anticipate = Ease(new BackEase { Amplitude = 0.3, EasingMode = EasingMode.EaseIn }); // holt erst Schwung
+    public static readonly IEasingFunction Pop = Ease(new BackEase { Amplitude = 0.9, EasingMode = EasingMode.EaseOut });       // short distances: ~30 % overshoot
+    public static readonly IEasingFunction Expand = Ease(new BackEase { Amplitude = 0.3, EasingMode = EasingMode.EaseOut });    // long distances: ~5 % overshoot
+    public static readonly IEasingFunction Glide = Ease(new BackEase { Amplitude = 0.4, EasingMode = EasingMode.EaseOut });     // moving
     public static readonly IEasingFunction Out = Ease(new CubicEase { EasingMode = EasingMode.EaseOut });
     public static readonly IEasingFunction In = Ease(new CubicEase { EasingMode = EasingMode.EaseIn });
     public static readonly IEasingFunction Swing = Ease(new SineEase { EasingMode = EasingMode.EaseInOut });
     public static readonly IEasingFunction Linear = Ease(new PowerEase { Power = 1, EasingMode = EasingMode.EaseIn });
 
-    // laufende Animation je Objekt und Eigenschaft: Eine ersetzte Animation darf beim Ende nichts mehr setzen
+    // Running animation per object and property: a replaced animation must not set anything when it ends.
     private static readonly ConditionalWeakTable<DependencyObject, Dictionary<DependencyProperty, AnimationTimeline>> Running = new();
     private static readonly HashSet<UIElement> Pressed = new();
 
-    // Eine Eigenschaft von → bis animieren. Schon während einer Wartezeit gilt der Startwert, am Ende bleibt der Zielwert
-    // als normaler Wert stehen (die Animation wird entfernt), damit Code ihn später wieder setzen kann.
+    // Animates a property from → to. The start value applies during the delay; at the end the target stays as a plain
+    // value (the animation is removed) so code can set it again later.
     public static void Run(IAnimatable target, DependencyProperty property, double from, double to, int ms,
                            IEasingFunction? ease = null, int delayMs = 0, Action? done = null)
     {
@@ -42,7 +41,7 @@ internal static class Motion
         Start(target, property, animation, from, to, done);
     }
 
-    // Mehrere Stationen (Zeitpunkt in ms, Wert), weich verbunden. „settle“ formt den letzten Abschnitt, z. B. mit Nachfedern.
+    // Several keyframes (time in ms, value), smoothly joined. "settle" shapes the last segment, e.g. with overshoot.
     public static void Keys(IAnimatable target, DependencyProperty property, int delayMs, (int Ms, double Value)[] keys,
                             IEasingFunction? settle = null, Action? done = null)
     {
@@ -68,7 +67,7 @@ internal static class Motion
         running[property] = animation;
         animation.Completed += (_, _) =>
         {
-            if (!running.TryGetValue(property, out var current) || current != animation) return;   // inzwischen ersetzt
+            if (!running.TryGetValue(property, out var current) || current != animation) return;   // replaced meanwhile
             running.Remove(property);
             owner.SetValue(property, to);
             target.BeginAnimation(property, null);
@@ -78,7 +77,7 @@ internal static class Motion
         target.BeginAnimation(property, animation);
     }
 
-    // Skalierung und Verschiebung als RenderTransform: kostet kein Layout, nur Zeichnen
+    // Scale and translation as RenderTransform: costs no layout, only rendering.
     public static ScaleTransform Scale(UIElement element) => Parts(element).Scale;
 
     public static TranslateTransform Shift(UIElement element) => Parts(element).Shift;
@@ -93,18 +92,18 @@ internal static class Motion
         return (scale, shift);
     }
 
-    // Erscheinen: von kleiner über das Ziel hinaus, dann leicht zurück, dabei einblenden
+    // Appear: from smaller past the target, then settle, fading in.
     public static void PopIn(UIElement element, double from = 0.92, int ms = 420, double originX = 0.5, double originY = 0.5, int delayMs = 0)
     {
         element.RenderTransformOrigin = new Point(originX, originY);
         var scale = Scale(element);
-        var ease = 1 - from > 0.2 ? Expand : Pop;                         // gleich viel Nachfedern, egal wie weit
+        var ease = 1 - from > 0.2 ? Expand : Pop;                         // same overshoot regardless of distance
         Run(scale, ScaleTransform.ScaleXProperty, from, 1, ms, ease, delayMs);
         Run(scale, ScaleTransform.ScaleYProperty, from, 1, ms, ease, delayMs);
         Run(element, UIElement.OpacityProperty, 0, 1, Math.Min(ms / 2, 200), Out, delayMs);
     }
 
-    // Verschwinden: leicht schrumpfen und ausblenden, zum selben Ursprung wie beim Erscheinen
+    // Disappear: shrink slightly and fade out, towards the same origin.
     public static void PopOut(UIElement element, double to = 0.94, int ms = 160, Action? done = null)
     {
         var scale = Scale(element);
@@ -113,7 +112,7 @@ internal static class Motion
         Run(element, UIElement.OpacityProperty, element.Opacity, 0, ms, In, done: done);
     }
 
-    // Kurzes Nachfedern: breit und flach, dann zurück, z. B. beim Andocken
+    // Short squash, e.g. when docking.
     public static void Bounce(UIElement element, double squash = 0.94, int ms = 420, double originX = 0.5, double originY = 0.5)
     {
         element.RenderTransformOrigin = new Point(originX, originY);
@@ -122,14 +121,14 @@ internal static class Motion
         Run(scale, ScaleTransform.ScaleYProperty, squash, 1, ms, Pop);
     }
 
-    // Von etwas weiter unten einschweben, wie Zeilen, die nacheinander erscheinen (Sheet 3)
+    // Rise in from slightly below, like lines appearing one after another.
     public static void Rise(UIElement element, double dy = 10, int ms = 420, int delayMs = 0)
     {
         Run(Shift(element), TranslateTransform.YProperty, dy, 0, ms, Glide, delayMs);
         Run(element, UIElement.OpacityProperty, 0, 1, 220, Out, delayMs);
     }
 
-    // Inhalte nacheinander statt alle auf einmal
+    // Items one after another instead of all at once.
     public static void Reveal(IEnumerable<UIElement> items, int delayMs = 0, int stepMs = 50, bool rise = false)
     {
         int i = 0;
@@ -150,9 +149,9 @@ internal static class Motion
         timer.Start();
     }
 
-    // ---------- Bedienung: gilt für alle Fenster ----------
+    // == Interactions (all windows) ==
 
-    // Knöpfe und Listeneinträge geben beim Drücken nach und federn beim Loslassen zurück, Schalter gleiten mit Nachfedern
+    // Buttons and list items give way when pressed and spring back on release; toggle switches glide with overshoot.
     public static void EnableInteractions()
     {
         foreach (var type in new[] { typeof(ButtonBase), typeof(ListBoxItem) })
@@ -169,7 +168,7 @@ internal static class Motion
 
     private static void Press(UIElement element)
     {
-        if (element is RepeatButton || !Enabled || !Pressed.Add(element)) return;   // Regler und Scrollleisten nicht
+        if (element is RepeatButton || !Enabled || !Pressed.Add(element)) return;   // not sliders and scroll bars
         double depth = element is ListBoxItem ? 0.97 : 0.9;
         element.RenderTransformOrigin = new Point(0.5, 0.5);
         var scale = Scale(element);
@@ -185,7 +184,7 @@ internal static class Motion
         Run(scale, ScaleTransform.ScaleYProperty, scale.ScaleY, 1, 420, Pop);
     }
 
-    // Der Knopf springt per Stil sofort auf die neue Seite. Eine Verschiebung von der alten Seite aus lässt ihn sichtbar gleiten.
+    // The knob jumps to the new side via the style; a shift from the old side makes it glide visibly.
     private static void Slide(object sender, RoutedEventArgs e)
     {
         if (sender is not CheckBox { IsLoaded: true, IsVisible: true } box || box.Template?.FindName("Knob", box) is not FrameworkElement knob
@@ -193,7 +192,7 @@ internal static class Motion
         double travel = track.ActualWidth - knob.ActualWidth - knob.Margin.Left - knob.Margin.Right;
         Run(Shift(knob), TranslateTransform.XProperty, box.IsChecked == true ? -travel : travel, 0, 380, Glide);
         knob.RenderTransformOrigin = new Point(0.5, 0.5);
-        Keys(Scale(knob), ScaleTransform.ScaleXProperty, 0, [(0, 1), (100, 1.3), (380, 1)], Pop);   // streckt sich unterwegs
+        Keys(Scale(knob), ScaleTransform.ScaleXProperty, 0, [(0, 1), (100, 1.3), (380, 1)], Pop);   // stretches on the way
     }
 
     private static IEasingFunction Ease(EasingFunctionBase ease)

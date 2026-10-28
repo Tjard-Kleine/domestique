@@ -3,8 +3,8 @@ using System.Xml.Linq;
 
 namespace Domestique.Core.Recording;
 
-// TCX für Strava & Co. Ohne GPS-Position erkennt Strava die Fahrt als Indoor-Aktivität.
-// Reihenfolge der Elemente nach dem Garmin-Schema, sonst lehnen manche Portale die Datei ab.
+// TCX for Strava and others. Without GPS positions Strava treats the ride as indoor.
+// Element order follows the Garmin schema; some portals reject other orders.
 public static class TcxWriter
 {
     private static readonly XNamespace Ns = "http://www.garmin.com/xmlschemas/TrainingCenterDatabase/v2";
@@ -17,8 +17,8 @@ public static class TcxWriter
     {
         if (samples.Count < 2) throw new ArgumentException("Too few samples for a ride.", nameof(samples));
         Sample first = samples[0], last = samples[^1];
-        bool hasCadence = samples.Any(s => s.CadenceRpm > 0);     // Trainer ohne Trittfrequenz: Feld weglassen statt 0
-        double kj = 0;                                            // Arbeit in kJ, beim Radfahren etwa gleich kcal
+        bool hasCadence = samples.Any(s => s.CadenceRpm > 0);     // no cadence sensor: omit the field instead of writing 0
+        double kj = 0;                                            // work in kJ, roughly kcal when cycling
         for (int i = 1; i < samples.Count; i++)
             kj += Math.Max(samples[i].PowerW, 0) * (samples[i].TimeUtc - samples[i - 1].TimeUtc).TotalSeconds / 1000;
         string start = Time(first.TimeUtc);

@@ -1,14 +1,13 @@
 namespace Domestique.Core.Physics;
 
-// Leistungsbilanz aus „Strecken & Physik“, integriert über die Bewegungsenergie: stabil im Stand,
-// realistisches Beschleunigen und Ausrollen. Alle Werte in SI-Einheiten.
+// Power balance integrated over kinetic energy: stable when standing, realistic acceleration and coasting. SI units.
 public sealed class RiderPhysics
 {
     private const double G = 9.81;
     private double _massKg = 83;
-    public double MassKg { get => _massKg; set => _massKg = Math.Max(value, 30); }   // Fahrer + Rad, nie 0
+    public double MassKg { get => _massKg; set => _massKg = Math.Max(value, 30); }   // rider + bike, never 0
     public double CdA { get; set; } = 0.32;
-    public double Crr { get; init; } = 0.004;                     // wie Zwift
+    public double Crr { get; init; } = 0.004;                     // same as Zwift
     public double Rho { get; init; } = 1.225;
     public double Efficiency { get; init; } = 0.97;
     public double SpeedMps { get; private set; }
@@ -21,8 +20,8 @@ public sealed class RiderPhysics
              + 0.5 * Rho * CdA * v * v;
     }
 
-    // Rechnet dt Sekunden weiter und gibt die gefahrene Strecke in Metern zurück.
-    // Mindestens 0,5 m/s in der Bilanz, damit man aus dem Stand losrollt, bergab auch ohne Treten.
+    // Advances dt seconds and returns the distance in meters. Uses at least 0.5 m/s in the balance
+    // so the rider starts rolling from standstill, and downhill without pedaling.
     public double Step(double powerW, double gradePercent, double dt)
     {
         double v = SpeedMps;

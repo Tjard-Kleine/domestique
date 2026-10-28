@@ -2,7 +2,7 @@ namespace Domestique.Core.Routes;
 
 public sealed record RoutePoint(double DistanceM, double Lat, double Lon, double ElevationM, double GradePercent);
 
-// Punkte im festen Raster von GpxLoader.StepM, daher reicht für die Suche eine Division.
+// Points lie on the fixed GpxLoader.StepM grid, so a lookup is a division.
 public sealed class Route(string name, IReadOnlyList<RoutePoint> points, double lengthM)
 {
     public string Name { get; } = name;
